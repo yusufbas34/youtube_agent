@@ -51,22 +51,36 @@ def get_authenticated_service(channel: str = "sozler"):
         if credentials.expired and credentials.refresh_token:
             print(f"  → Token süresi dolmuş, yenileniyor...")
             try:
-                credentials.refresh(Request())
-                # Yenilenmiş token'ı kaydet
+                import httpx
+                from google.auth.transport.requests import Request as GRequest
+                import requests as req_lib
+                session = req_lib.Session()
+                session.verify = False
+                credentials.refresh(GRequest(session=session))
                 with open(token_file, "w", encoding="utf-8") as f:
                     f.write(credentials.to_json())
                 print(f"  ✅ Token yenilendi: {token_file}")
             except Exception as e:
                 print(f"  ⚠ Token yenilenemedi ({e}), yeniden giriş gerekiyor...")
-                credentials = None  # Yeniden auth gerekiyor
+                credentials = None
         else:
             credentials = None
 
     if not credentials or not credentials.valid:
+        import platform
+        is_railway = os.environ.get("RAILWAY_ENVIRONMENT") is not None
+        is_headless = not platform.system() == "Windows"
+
+        if is_railway or is_headless:
+            raise RuntimeError(
+                f"Token geçersiz veya yok ({channel}). "
+                f"Yeni token almak için lokalde 'python create_{channel}_token.py' çalıştır "
+                f"ve TOKEN_{channel.upper()} environment variable'ını güncelle."
+            )
+
         if not os.path.exists(creds_file):
             raise FileNotFoundError(
-                f"Credentials dosyası bulunamadı: {creds_file}\n"
-                f"Google Cloud Console'dan indirip klasöre koy."
+                f"Credentials dosyası bulunamadı: {creds_file}"
             )
         print(f"  → Tarayıcıda YouTube izni gerekiyor ({channel})...")
         flow = InstalledAppFlow.from_client_secrets_file(creds_file, SCOPES)
