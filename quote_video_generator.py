@@ -7,34 +7,95 @@ Söz Video Üreticisi
 - Freesound müzik
 """
 
-import os, re, glob, json, random, asyncio
+import os, re, glob, json, random, asyncio, requests, io
 import numpy as np
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
-    VideoFileClip, AudioFileClip, concatenate_videoclips, CompositeAudioClip
+    VideoFileClip, AudioFileClip, concatenate_videoclips, CompositeAudioClip,
+    ImageClip
 )
 import edge_tts
 from music_manager import get_music
+from platform_helper import FONT_PATHS, ensure_dirs
 
-STOCK_DIR  = r"C:\Users\yusuf.bas\youtube_agent\shortsvideo"
-FONT_PATH  = r"C:\Users\yusuf.bas\youtube_agent\font\Painter_PERSONAL_USE_ONLY.ttf"
+ensure_dirs()
+
+import platform
+IS_WINDOWS = platform.system() == "Windows"
+
+STOCK_DIR = r"C:\Users\yusuf.bas\youtube_agent\shortsvideo" if IS_WINDOWS else "/app/shortsvideo"
+
+# Painter font varsa kullan, yoksa Montserrat
+PAINTER_FONT = r"C:\Users\yusuf.bas\youtube_agent\font\Painter_PERSONAL_USE_ONLY.ttf" if IS_WINDOWS else "/app/font/Painter_PERSONAL_USE_ONLY.ttf"
 VOICE      = "tr-TR-EmelNeural"
 VIDEO_SIZE = (1080, 1920)
 
+try:
+    from config import PIXABAY_API_KEY
+except:
+    PIXABAY_API_KEY = "55256954-4e774f9bedfa0d1f2fe7efe0a"
+
 
 def get_font(size):
-    if os.path.exists(FONT_PATH):
-        try:
-            return ImageFont.truetype(FONT_PATH, size)
-        except:
-            pass
-    # fallback
-    for p in ["C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/arial.ttf"]:
+    # Painter font dene
+    if os.path.exists(PAINTER_FONT):
+        try: return ImageFont.truetype(PAINTER_FONT, size)
+        except: pass
+    # Platform font listesinden dene
+    for p in FONT_PATHS:
         if os.path.exists(p):
             try: return ImageFont.truetype(p, size)
             except: pass
     return ImageFont.load_default()
+
+
+def fetch_pixabay_video(query: str) -> str | None:
+    """Pixabay'den dikey video indir, geçici dosyaya kaydet."""
+    try:
+        r = requests.get(
+            "https://pixabay.com/api/videos/",
+            params={"key": PIXABAY_API_KEY, "q": query,
+                    "video_type": "film", "per_page": 5, "safesearch": "true"},
+            timeout=15, verify=False
+        )
+        if r.status_code != 200: return None
+        hits = r.json().get("hits", [])
+        if not hits: return None
+        hit = random.choice(hits[:3])
+        # En küçük boyutu seç (hızlı indir)
+        videos = hit.get("videos", {})
+        url = (videos.get("small") or videos.get("medium") or {}).get("url")
+        if not url: return None
+        vr = requests.get(url, timeout=30, verify=False)
+        if vr.status_code != 200: return None
+        tmp_path = f"output/tmp/pixabay_{random.randint(1000,9999)}.mp4"
+        Path("output/tmp").mkdir(parents=True, exist_ok=True)
+        with open(tmp_path, "wb") as f:
+            f.write(vr.content)
+        return tmp_path
+    except Exception as e:
+        print(f"  ⚠ Pixabay video: {e}")
+        return None
+
+
+def pick_stock_video(exclude=None, query="nature peaceful"):
+    """Lokal stok video varsa kullan, yoksa Pixabay'den indir."""
+    # Lokal stok video dene
+    if os.path.exists(STOCK_DIR):
+        videos = []
+        for ext in ["*.mp4","*.MP4","*.mov","*.MOV"]:
+            videos += glob.glob(os.path.join(STOCK_DIR, ext))
+        if videos:
+            avail = [v for v in videos if not (exclude and v in exclude)] or videos
+            return random.choice(avail), False
+
+    # Pixabay'den indir
+    print("  → Pixabay'den video indiriliyor...")
+    path = fetch_pixabay_video(query)
+    if path:
+        return path, True  # True = geçici, sil
+    raise FileNotFoundError("Stok video bulunamadı ve Pixabay'den indirilemedi")
 
 
 def wrap_text(text, font, max_w, draw):
@@ -139,7 +200,19 @@ def create_quote_video(quote: dict, output_path: str,
     tmp.mkdir(parents=True, exist_ok=True)
 
     if not stock_video_path:
-        stock_video_path = pick_stock_video()
+        # Söz konusuna göre video ara
+        keywords = quote.get("category", "motivasyon")
+        query_map = {
+            "motivasyon": "nature sunrise inspirational",
+            "dini": "peaceful sky clouds",
+            "ask iliskiler": "romantic nature",
+            "yasam felsefesi": "landscape peaceful",
+            "ozlu soz": "nature forest calm",
+        }
+        query = query_map.get(keywords, "nature peaceful")
+        stock_video_path, is_temp = pick_stock_video(query=query)
+    else:
+        is_temp = False
     print("  → Stok video: " + os.path.basename(stock_video_path))
 
     # TTS
@@ -206,6 +279,10 @@ def create_quote_video(quote: dict, output_path: str,
 
     for f in tmp.glob("q_*"):
         try: f.unlink()
+        except: pass
+    # Geçici Pixabay videosu sil
+    if is_temp and stock_video_path and os.path.exists(stock_video_path):
+        try: os.remove(stock_video_path)
         except: pass
 
     mb = os.path.getsize(output_path) / (1024*1024)
