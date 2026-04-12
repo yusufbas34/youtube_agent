@@ -182,16 +182,6 @@ def generate_tts(text, path):
     return path
 
 
-def pick_stock_video(exclude=None):
-    videos = []
-    for ext in ["*.mp4","*.MP4","*.mov","*.MOV"]:
-        videos += glob.glob(os.path.join(STOCK_DIR, ext))
-    if not videos:
-        raise FileNotFoundError("Stok video bulunamadi: " + STOCK_DIR)
-    avail = [v for v in videos if not (exclude and v in exclude)] or videos
-    return random.choice(avail)
-
-
 def create_quote_video(quote: dict, output_path: str,
                        stock_video_path: str = None) -> str:
     print("  → Video uretiliyor: " + quote.get("text","")[:50] + "...")
