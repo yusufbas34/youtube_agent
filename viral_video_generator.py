@@ -32,7 +32,7 @@ def get_font(size):
     return ImageFont.load_default()
 
 
-async def _tts(text, path):
+async def _tts_edge(text, path):
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode    = ssl.CERT_NONE
@@ -43,7 +43,24 @@ async def _tts(text, path):
 
 
 def generate_tts(text, path):
-    asyncio.run(_tts(text, path))
+    try:
+        from config import ELEVENLABS_API_KEY
+        if not ELEVENLABS_API_KEY:
+            raise ValueError("API key yok")
+        import httpx
+        from elevenlabs import ElevenLabs, save
+        client = ElevenLabs(api_key=ELEVENLABS_API_KEY, httpx_client=httpx.Client(verify=False))
+        audio = client.text_to_speech.convert(
+            text=text[:500],
+            voice_id="xgYIZvUB5h2eFY3HUFNj",  # Viral sesi
+            model_id="eleven_multilingual_v2",
+            voice_settings={"stability":0.4,"similarity_boost":0.8,"style":0.5,"use_speaker_boost":True},
+        )
+        save(audio, path)
+        print(f"  ✅ ElevenLabs TTS (Viral)")
+    except Exception as e:
+        print(f"  ⚠ ElevenLabs hata ({e}), edge_tts kullanılıyor...")
+        asyncio.run(_tts_edge(text, path))
 
 
 def download_with_ytdlp(tweet_url: str, output_path: str) -> bool:
