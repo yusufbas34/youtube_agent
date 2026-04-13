@@ -298,7 +298,9 @@ def create_quote_video(quote: dict, output_path: str,
     final_video.write_videofile(
         output_path, fps=24,
         codec="libx264", audio_codec="aac",
-        logger=None, threads=4
+        logger=None, threads=2,
+        preset="ultrafast",
+        ffmpeg_params=["-crf","28"]
     )
 
     for f in tmp.glob("q_*"):
