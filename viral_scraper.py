@@ -12,10 +12,20 @@ from email.utils import parsedate_to_datetime
 import xml.etree.ElementTree as ET
 
 NITTER_MIRRORS = [
+    "https://nitter.poast.org",
     "https://nitter.net",
     "https://nitter.privacydev.net",
-    "https://nitter.poast.org",
     "https://nitter.1d4.us",
+    "https://nitter.catsarch.com",
+    "https://nitter.unixfox.eu",
+    "https://nitter.moomoo.me",
+    "https://nitter.ktachibana.party",
+]
+
+# RSSHub alternatifi
+RSSHUB_MIRRORS = [
+    "https://rsshub.app/twitter/user/tirajnews",
+    "https://rsshub.rss.pub/twitter/user/tirajnews",
 ]
 NITTER_BASE  = "https://nitter.net"
 TARGET_USER  = "tirajnews"
@@ -175,6 +185,51 @@ def fetch_tweets() -> list:
         except Exception as e:
             last_error = e
             print(f"  ⚠ {mirror} hata: {e}")
+            continue
+
+    # Nitter'lar başarısız — RSSHub dene
+    print(f"  → Nitter başarısız, RSSHub deneniyor...")
+    for rsshub_url in RSSHUB_MIRRORS:
+        try:
+            r = requests.get(rsshub_url, timeout=15, verify=False,
+                            headers={"User-Agent":"Mozilla/5.0"})
+            if r.status_code != 200:
+                continue
+            root  = ET.fromstring(r.content)
+            items = root.findall(".//item")
+            if not items:
+                continue
+            print(f"  ✅ RSSHub çalışıyor: {rsshub_url}")
+            for item in items:
+                link    = item.findtext("link","")
+                desc    = item.findtext("description","")
+                title   = item.findtext("title","")
+                pubdate = item.findtext("pubDate","")
+                try:
+                    pub_dt = parsedate_to_datetime(pubdate)
+                    if pub_dt < cutoff: continue
+                except: pass
+                tid = link.rstrip("/").split("/")[-1].split("#")[0] if link else ""
+                if not tid: continue
+                text = re.sub(r'<[^>]+>', '', desc or title).strip()
+                text = re.sub(r'https?://\S+', '', text).strip()
+                text = re.sub(r'\s+', ' ', text).strip()
+                if not text: text = title
+                tweets.append({
+                    "id":        tid,
+                    "text":      text[:500],
+                    "link":      f"https://x.com/{TARGET_USER}/status/{tid}",
+                    "img_url":   None,
+                    "has_video": False,
+                    "pubdate":   pubdate,
+                    "source":    f"@{TARGET_USER}",
+                    "retweets":  0,
+                    "likes":     0,
+                })
+            print(f"  → {len(tweets)} tweet alındı (RSSHub)")
+            return tweets
+        except Exception as e:
+            print(f"  ⚠ RSSHub hata: {e}")
             continue
 
     print(f"  ❌ Tüm mirror'lar başarısız. Son hata: {last_error}")
