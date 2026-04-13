@@ -242,10 +242,10 @@ def add_overlay(frame_arr, t, seg_text, seg_dur, accent_hex,
     fo = ease_out((seg_dur-t)/0.4) if t > seg_dur-0.4 else 1.0
     alpha = min(fi, fo)
 
-    # Alt gradient — sadece metin altında ince, siyah kutu yok
-    for y in range(380):
-        a = int(180 * ease_out(1-y/380) * alpha)
-        draw.line([(0,H-380+y),(W,H-380+y)], fill=(0,0,0,a))
+    # Alt gradient — çok ince, sadece metin okunabilirliği için
+    for y in range(200):
+        a = int(120 * ease_out(1-y/200) * alpha)
+        draw.line([(0,H-200+y),(W,H-200+y)], fill=(0,0,0,a))
 
     # Üst gradient — sadece başlık için ince
     for y in range(180):
@@ -336,7 +336,7 @@ def generate_tts(text, path):
         client = ElevenLabs(api_key=ELEVENLABS_API_KEY, httpx_client=http_client)
         audio = client.text_to_speech.convert(
             text=text,
-            voice_id="JBFqnCBsd6RMkjVDRZzb",  # George
+            voice_id="NfwyWIJnRR1RrYnStGUG",  # Tarih sesi
             model_id="eleven_multilingual_v2",
             voice_settings={"stability": 0.35, "similarity_boost": 0.80,
                            "style": 0.45, "use_speaker_boost": True},
