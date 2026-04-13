@@ -168,7 +168,7 @@ def make_quote_overlay(quote: dict, size=VIDEO_SIZE) -> np.ndarray:
     return np.array(overlay)
 
 
-async def _tts(text, path):
+async def _tts_edge(text, path):
     import ssl
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
@@ -178,7 +178,24 @@ async def _tts(text, path):
 
 
 def generate_tts(text, path):
-    asyncio.run(_tts(text, path))
+    try:
+        from config import ELEVENLABS_API_KEY
+        if not ELEVENLABS_API_KEY:
+            raise ValueError("API key yok")
+        import httpx
+        from elevenlabs import ElevenLabs, save
+        client = ElevenLabs(api_key=ELEVENLABS_API_KEY, httpx_client=httpx.Client(verify=False))
+        audio = client.text_to_speech.convert(
+            text=text,
+            voice_id="t8fOU8zfPVWFYN34BllH",  # Sözler sesi
+            model_id="eleven_multilingual_v2",
+            voice_settings={"stability":0.4,"similarity_boost":0.8,"style":0.3,"use_speaker_boost":True},
+        )
+        save(audio, path)
+        print(f"  ✅ ElevenLabs TTS (Sözler)")
+    except Exception as e:
+        print(f"  ⚠ ElevenLabs hata ({e}), edge_tts kullanılıyor...")
+        asyncio.run(_tts_edge(text, path))
     return path
 
 
@@ -190,16 +207,33 @@ def create_quote_video(quote: dict, output_path: str,
     tmp.mkdir(parents=True, exist_ok=True)
 
     if not stock_video_path:
-        # Söz konusuna göre video ara
-        keywords = quote.get("category", "motivasyon")
+        # Söz metninden ve kategorisinden akıllı query oluştur
+        category = quote.get("category", "motivasyon")
+        text = quote.get("text", "")
         query_map = {
-            "motivasyon": "nature sunrise inspirational",
-            "dini": "peaceful sky clouds",
-            "ask iliskiler": "romantic nature",
-            "yasam felsefesi": "landscape peaceful",
-            "ozlu soz": "nature forest calm",
+            "motivasyon":      "motivation sunrise energy success",
+            "dini":            "peaceful mosque sky prayer",
+            "ask iliskiler":   "romantic couple love sunset",
+            "ask_iliskiler":   "romantic couple love sunset",
+            "yasam felsefesi": "peaceful nature life journey",
+            "yasam_felsefesi": "peaceful nature life journey",
+            "ozlu soz":        "wisdom nature calm meditation",
+            "ozlu_soz":        "wisdom nature calm meditation",
+            "kisisel gelisim": "success growth achievement",
+            "kisisel_gelisim": "success growth achievement",
+            "unlu alinti":     "inspiration sky clouds dramatic",
+            "unlu_alinti":     "inspiration sky clouds dramatic",
         }
-        query = query_map.get(keywords, "nature peaceful")
+        # Metinden anahtar kelime çıkar
+        keywords = []
+        for kw, vid_q in [("mutlu","happy joyful"),("huzur","peaceful calm nature"),
+                          ("başar","success achievement"),("sevgi","love warm"),
+                          ("ölüm","dark dramatic"),("doğa","nature landscape"),
+                          ("iman","spiritual light"),("sabır","calm water river")]:
+            if kw in text.lower():
+                keywords.append(vid_q)
+                break
+        query = keywords[0] if keywords else query_map.get(category, "nature peaceful inspirational")
         stock_video_path, is_temp = pick_stock_video(query=query)
     else:
         is_temp = False
