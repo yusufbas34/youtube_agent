@@ -80,12 +80,14 @@ def fetch_via_twitter_api() -> list:
     """Twitter API v2 ile tweet çeker."""
     try:
         bearer = os.environ.get("TWITTER_BEARER_TOKEN","")
+        print(f"  → Twitter Bearer Token: {'VAR (' + bearer[:20] + '...)' if bearer else 'YOK'}")
         if not bearer:
             try:
                 from config import TWITTER_BEARER_TOKEN
                 bearer = TWITTER_BEARER_TOKEN
             except: pass
         if not bearer:
+            print("  ⚠ TWITTER_BEARER_TOKEN bulunamadı, atlanıyor")
             return []
 
         # Kullanıcı ID'sini al
