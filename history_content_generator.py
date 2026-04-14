@@ -108,7 +108,7 @@ def generate_with_gemini(prompt):
             raise ValueError("GEMINI_API_KEY bulunamadı")
 
         import requests, httpx
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
         body = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"maxOutputTokens": 3000, "temperature": 0.9}
