@@ -96,50 +96,56 @@ def generate_with_claude(prompt):
 
 
 def generate_with_gemini(prompt):
-    """Gemini API ile içerik üretir."""
-    try:
-        gemini_key = os.environ.get("GEMINI_API_KEY", "")
-        if not gemini_key:
-            try:
-                from config import GEMINI_API_KEY
-                gemini_key = GEMINI_API_KEY
-            except: pass
-        if not gemini_key:
-            raise ValueError("GEMINI_API_KEY bulunamadı")
+    """Gemini API ile içerik üretir. 429 durumunda retry yapar."""
+    import requests, time
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    if not gemini_key:
+        try:
+            from config import GEMINI_API_KEY
+            gemini_key = GEMINI_API_KEY
+        except: pass
+    if not gemini_key:
+        raise ValueError("GEMINI_API_KEY bulunamadı")
 
-        import requests, httpx
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
-        body = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 3000, "temperature": 0.9}
-        }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": 3000, "temperature": 0.9}
+    }
+
+    for attempt in range(3):
         r = requests.post(url, json=body, timeout=30, verify=False)
-        if r.status_code != 200:
+        if r.status_code == 200:
+            data = r.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        elif r.status_code == 429:
+            wait = 15 * (attempt + 1)
+            print(f"  ⚠ Gemini rate limit, {wait}s bekleniyor...")
+            time.sleep(wait)
+        else:
             raise Exception(f"Gemini HTTP {r.status_code}: {r.text[:200]}")
-        data = r.json()
-        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-    except Exception as e:
-        raise Exception(f"Gemini hata: {e}")
+
+    raise Exception("Gemini 3 denemede de başarısız (rate limit)")
 
 
 def generate_history_content(topic: str = None, format_type: str = "timeline") -> dict:
     today  = datetime.now().strftime("%d %B")
     prompt = build_prompt(topic, format_type, today)
 
-    # 1. Claude dene
+    # 1. Gemini dene (ücretsiz, önce)
     text = None
     try:
-        print("  → Claude ile içerik üretiliyor...")
-        text = generate_with_claude(prompt)
-        print("  ✅ Claude başarılı")
+        print("  → Gemini ile içerik üretiliyor...")
+        text = generate_with_gemini(prompt)
+        print("  ✅ Gemini başarılı")
     except Exception as e:
-        print(f"  ⚠ Claude hata: {e}")
-        print("  → Gemini'ye geçiliyor...")
+        print(f"  ⚠ Gemini hata: {e}")
+        print("  → Claude'a geçiliyor...")
         try:
-            text = generate_with_gemini(prompt)
-            print("  ✅ Gemini başarılı")
+            text = generate_with_claude(prompt)
+            print("  ✅ Claude başarılı")
         except Exception as e2:
-            raise Exception(f"Claude ve Gemini ikisi de başarısız: {e} | {e2}")
+            raise Exception(f"Gemini ve Claude ikisi de başarısız: {e} | {e2}")
 
     content = parse_response(text)
     content["format"]       = format_type
