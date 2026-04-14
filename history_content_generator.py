@@ -107,45 +107,84 @@ def generate_with_gemini(prompt):
     if not gemini_key:
         raise ValueError("GEMINI_API_KEY bulunamadı")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
+    # Farklı Gemini modelleri dene
+    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest"]
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={gemini_key}"
+        body = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 3000, "temperature": 0.9}
+        }
+        for attempt in range(2):
+            try:
+                r = requests.post(url, json=body, timeout=30, verify=False)
+                if r.status_code == 200:
+                    return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                elif r.status_code == 429:
+                    wait = 20 * (attempt + 1)
+                    print(f"  ⚠ Gemini {model} rate limit, {wait}s bekleniyor...")
+                    time.sleep(wait)
+                else:
+                    print(f"  ⚠ Gemini {model} HTTP {r.status_code}")
+                    break
+            except Exception as e:
+                print(f"  ⚠ Gemini {model} hata: {e}")
+                break
+
+    raise Exception("Gemini tüm modellerde başarısız")
+
+
+def generate_with_groq(prompt):
+    """Groq API ile içerik üretir (llama-3.3-70b)."""
+    import requests
+    groq_key = os.environ.get("GROQ_API_KEY", "")
+    if not groq_key:
+        try:
+            from config import GROQ_API_KEY
+            groq_key = GROQ_API_KEY
+        except: pass
+    if not groq_key:
+        raise ValueError("GROQ_API_KEY bulunamadı")
+
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
     body = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": 3000, "temperature": 0.9}
+        "model": "llama-3.3-70b-versatile",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 3000,
+        "temperature": 0.9,
     }
-
-    for attempt in range(3):
-        r = requests.post(url, json=body, timeout=30, verify=False)
-        if r.status_code == 200:
-            data = r.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        elif r.status_code == 429:
-            wait = 15 * (attempt + 1)
-            print(f"  ⚠ Gemini rate limit, {wait}s bekleniyor...")
-            time.sleep(wait)
-        else:
-            raise Exception(f"Gemini HTTP {r.status_code}: {r.text[:200]}")
-
-    raise Exception("Gemini 3 denemede de başarısız (rate limit)")
+    r = requests.post(url, json=body, headers=headers, timeout=30, verify=False)
+    if r.status_code != 200:
+        raise Exception(f"Groq HTTP {r.status_code}: {r.text[:200]}")
+    return r.json()["choices"][0]["message"]["content"].strip()
 
 
 def generate_history_content(topic: str = None, format_type: str = "timeline") -> dict:
     today  = datetime.now().strftime("%d %B")
     prompt = build_prompt(topic, format_type, today)
 
-    # 1. Gemini dene (ücretsiz, önce)
     text = None
-    try:
-        print("  → Gemini ile içerik üretiliyor...")
-        text = generate_with_gemini(prompt)
-        print("  ✅ Gemini başarılı")
-    except Exception as e:
-        print(f"  ⚠ Gemini hata: {e}")
-        print("  → Claude'a geçiliyor...")
+    providers = [
+        ("Claude",  generate_with_claude),
+        ("Gemini",  generate_with_gemini),
+        ("Groq",    generate_with_groq),
+    ]
+
+    last_error = None
+    for name, fn in providers:
         try:
-            text = generate_with_claude(prompt)
-            print("  ✅ Claude başarılı")
-        except Exception as e2:
-            raise Exception(f"Gemini ve Claude ikisi de başarısız: {e} | {e2}")
+            print(f"  → {name} ile içerik üretiliyor...")
+            text = fn(prompt)
+            print(f"  ✅ {name} başarılı")
+            break
+        except Exception as e:
+            print(f"  ⚠ {name} hata: {e}")
+            last_error = e
+            continue
+
+    if not text:
+        raise Exception(f"Tüm sağlayıcılar başarısız. Son hata: {last_error}")
 
     content = parse_response(text)
     content["format"]       = format_type
