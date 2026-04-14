@@ -13,13 +13,6 @@ from quote_video_generator import create_quote_video
 from generate_dashboard import generate_dashboard
 from config import UPLOAD_TIME, UPLOAD_TIMEZONE
 
-# Railway'de token'ları env var'lardan yükle
-try:
-    from token_manager import setup_tokens
-    setup_tokens()
-except Exception as _te:
-    print(f"Token setup: {_te}")
-
 app = Flask(__name__)
 
 STATUS = {
@@ -651,7 +644,7 @@ Sadece JSON döndür:
 """
 
         msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=4000,
             messages=[{"role":"user","content":prompt}]
         )
@@ -848,7 +841,7 @@ def api_roadmap_tarih():
 Sadece JSON döndür:
 {{"tarih":{{"ozet":"değerlendirme","en_iyi_format":"format analizi","hemen_yapilacaklar":[{{"oncelik":"YUKSEK","aksiyon":"aksiyon","beklenen_etki":"etki"}}],"bu_hafta":[{{"aksiyon":"a","detay":"d"}}],"bu_ay":[{{"aksiyon":"a","detay":"d"}}],"icerik_onerileri":["k1","k2","k3","k4","k5"],"optimizasyon_ipuclari":["i1","i2","i3"]}},"guncellendi":"{datetime.now().strftime('%d.%m.%Y %H:%M')}"}}"""
 
-        msg  = client.messages.create(model="claude-sonnet-4-20250514", max_tokens=2000, messages=[{"role":"user","content":prompt}])
+        msg  = client.messages.create(model="claude-sonnet-4-6", max_tokens=2000, messages=[{"role":"user","content":prompt}])
         text = msg.content[0].text.strip()
         if "```json" in text: text = text.split("```json")[1].split("```")[0]
         elif "```" in text:   text = text.split("```")[1].split("```")[0]
@@ -1072,5 +1065,4 @@ if __name__ == "__main__":
         print(f"  Zamanlayıcı başlatılamadı: {str(e)}")
 
     print("=" * 50)
-    port = int(os.environ.get("PORT", 5051))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host="0.0.0.0", port=5051, debug=False)
