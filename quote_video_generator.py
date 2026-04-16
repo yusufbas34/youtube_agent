@@ -168,7 +168,7 @@ def make_quote_overlay(quote: dict, size=VIDEO_SIZE) -> np.ndarray:
     return np.array(overlay)
 
 
-async def _tts_edge(text, path):
+async def _tts(text, path):
     import ssl
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
@@ -178,8 +178,7 @@ async def _tts_edge(text, path):
 
 
 def generate_tts(text, path):
-    from elevenlabs_helper import generate_tts_with_fallback
-    generate_tts_with_fallback(text, path, channel="sozler")
+    asyncio.run(_tts(text, path))
     return path
 
 
@@ -191,33 +190,16 @@ def create_quote_video(quote: dict, output_path: str,
     tmp.mkdir(parents=True, exist_ok=True)
 
     if not stock_video_path:
-        # Söz metninden ve kategorisinden akıllı query oluştur
-        category = quote.get("category", "motivasyon")
-        text = quote.get("text", "")
+        # Söz konusuna göre video ara
+        keywords = quote.get("category", "motivasyon")
         query_map = {
-            "motivasyon":      "motivation sunrise energy success",
-            "dini":            "peaceful mosque sky prayer",
-            "ask iliskiler":   "romantic couple love sunset",
-            "ask_iliskiler":   "romantic couple love sunset",
-            "yasam felsefesi": "peaceful nature life journey",
-            "yasam_felsefesi": "peaceful nature life journey",
-            "ozlu soz":        "wisdom nature calm meditation",
-            "ozlu_soz":        "wisdom nature calm meditation",
-            "kisisel gelisim": "success growth achievement",
-            "kisisel_gelisim": "success growth achievement",
-            "unlu alinti":     "inspiration sky clouds dramatic",
-            "unlu_alinti":     "inspiration sky clouds dramatic",
+            "motivasyon": "nature sunrise inspirational",
+            "dini": "peaceful sky clouds",
+            "ask iliskiler": "romantic nature",
+            "yasam felsefesi": "landscape peaceful",
+            "ozlu soz": "nature forest calm",
         }
-        # Metinden anahtar kelime çıkar
-        keywords = []
-        for kw, vid_q in [("mutlu","happy joyful"),("huzur","peaceful calm nature"),
-                          ("başar","success achievement"),("sevgi","love warm"),
-                          ("ölüm","dark dramatic"),("doğa","nature landscape"),
-                          ("iman","spiritual light"),("sabır","calm water river")]:
-            if kw in text.lower():
-                keywords.append(vid_q)
-                break
-        query = keywords[0] if keywords else query_map.get(category, "nature peaceful inspirational")
+        query = query_map.get(keywords, "nature peaceful")
         stock_video_path, is_temp = pick_stock_video(query=query)
     else:
         is_temp = False
@@ -282,8 +264,19 @@ def create_quote_video(quote: dict, output_path: str,
     final_video.write_videofile(
         output_path, fps=24,
         codec="libx264", audio_codec="aac",
-        logger=None, threads=4
+        logger=None, threads=2,
+        preset="ultrafast",
+        ffmpeg_params=["-crf","26"]
     )
+
+    # Bellek temizle
+    try:
+        final_video.close()
+        stock.close()
+        tts_audio.close()
+        music_audio.close()
+    except: pass
+    import gc; gc.collect()
 
     for f in tmp.glob("q_*"):
         try: f.unlink()
