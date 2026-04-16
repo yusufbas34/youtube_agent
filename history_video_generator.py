@@ -18,7 +18,7 @@ from moviepy.editor import (
 import edge_tts
 
 W, H       = 1080, 1920
-FPS        = 24
+FPS        = 20
 OUTPUT_DIR = Path("output/tarih")
 
 from platform_helper import FONT_PATHS, LOGO_PATH, ensure_dirs
@@ -201,7 +201,7 @@ def ease_out(t):
 def ken_burns(img: Image.Image, t: float, duration: float,
               zoom_in=True, direction="center") -> np.ndarray:
     p    = min(1.0, t / max(duration, 0.01))
-    zoom = 1.0 + 0.18*p if zoom_in else 1.18 - 0.18*p
+    zoom = 1.0 + 0.08*p if zoom_in else 1.08 - 0.08*p
     dirs = {
         "center": (0.5,  0.45),
         "left":   (0.35+0.15*p, 0.45),
@@ -211,7 +211,7 @@ def ken_burns(img: Image.Image, t: float, duration: float,
     }
     cx, cy = dirs.get(direction, (0.5, 0.45))
     nw, nh = int(W*zoom), int(H*zoom)
-    zoomed = img.resize((nw, nh), Image.LANCZOS)
+    zoomed = img.resize((nw, nh), Image.BILINEAR)
     left   = max(0, min(int(cx*nw - W/2), nw-W))
     top    = max(0, min(int(cy*nh - H/2), nh-H))
     return np.array(zoomed.crop((left, top, left+W, top+H)))
@@ -242,10 +242,10 @@ def add_overlay(frame_arr, t, seg_text, seg_dur, accent_hex,
     fo = ease_out((seg_dur-t)/0.4) if t > seg_dur-0.4 else 1.0
     alpha = min(fi, fo)
 
-    # Alt gradient — çok ince, sadece metin okunabilirliği için
-    for y in range(200):
-        a = int(120 * ease_out(1-y/200) * alpha)
-        draw.line([(0,H-200+y),(W,H-200+y)], fill=(0,0,0,a))
+    # Alt gradient — sadece metin altında ince, siyah kutu yok
+    for y in range(380):
+        a = int(180 * ease_out(1-y/380) * alpha)
+        draw.line([(0,H-380+y),(W,H-380+y)], fill=(0,0,0,a))
 
     # Üst gradient — sadece başlık için ince
     for y in range(180):
@@ -326,8 +326,26 @@ async def _tts_edge(text, path):
 
 def generate_tts(text, path):
     """ElevenLabs ile TTS üret, hata olursa edge_tts'e düş."""
-    from elevenlabs_helper import generate_tts_with_fallback
-    generate_tts_with_fallback(text, path, channel="tarih")
+    try:
+        from config import ELEVENLABS_API_KEY
+        if not ELEVENLABS_API_KEY:
+            raise ValueError("API key yok")
+        import httpx
+        from elevenlabs import ElevenLabs, save
+        http_client = httpx.Client(verify=False)
+        client = ElevenLabs(api_key=ELEVENLABS_API_KEY, httpx_client=http_client)
+        audio = client.text_to_speech.convert(
+            text=text,
+            voice_id="JBFqnCBsd6RMkjVDRZzb",  # George
+            model_id="eleven_multilingual_v2",
+            voice_settings={"stability": 0.35, "similarity_boost": 0.80,
+                           "style": 0.45, "use_speaker_boost": True},
+        )
+        save(audio, path)
+        print(f"    ✅ ElevenLabs TTS: {os.path.basename(path)}")
+    except Exception as e:
+        print(f"    ⚠ ElevenLabs hata ({e}), edge_tts kullanılıyor...")
+        asyncio.run(_tts_edge(text, path))
 
 
 # ── ANA FONKSİYON ─────────────────────────────────────────────────
@@ -513,9 +531,9 @@ def create_history_video(content: dict, output_path: str = None) -> str:
     final.write_videofile(
         output_path, fps=FPS,
         codec="libx264", audio_codec="aac",
-        logger=None, threads=8,
+        logger=None, threads=2,
         preset="ultrafast",
-        ffmpeg_params=["-crf","26"]
+        ffmpeg_params=["-crf","28"]
     )
 
     # Temp ses dosyalarını temizle
