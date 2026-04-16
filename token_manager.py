@@ -25,7 +25,7 @@ def setup_tokens():
 
     for env_key, file_name in {**token_map, **creds_map}.items():
         val = os.environ.get(env_key)
-        if val and not os.path.exists(file_name):
+        if val:
             try:
                 # Base64 decode dene
                 decoded = base64.b64decode(val).decode("utf-8")
