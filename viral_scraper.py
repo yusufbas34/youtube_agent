@@ -265,18 +265,17 @@ def download_video_ytdlp(tweet_url: str, output_path: str) -> bool:
 
 def check_new_tweets(force: bool = False) -> list:
     print(f"  🔍 @{TARGET_USER} kontrol ediliyor...")
-    seen     = set() if force else load_seen()
+    # Seen cache Railway'de kalıcı değil — sadece queue ve yapılmış videolar kullan
     made     = get_made_tweet_ids()
-    skip_ids = seen | made
+    queue    = load_queue()
+    queued_ids = {q.get("tweet_id") for q in queue if q.get("status") not in ("yuklendi",)}
+    skip_ids = made | queued_ids
     tweets   = fetch_tweets()
     new      = []
     for tweet in tweets:
         tid = tweet["id"]
         if tid in skip_ids: continue
-        seen.add(tid)
         new.append(tweet)
-    if not force:
-        save_seen(seen)
     print(f"  → {len(new)} yeni tweet")
     return new
 
