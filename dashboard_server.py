@@ -3,7 +3,7 @@ Dashboard Sunucusu — Çok Kanallı
 Flask ile çalışır. http://localhost:5051
 """
 
-import os, json, threading, glob, re
+import os, json, threading, glob, re, subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file, send_from_directory
