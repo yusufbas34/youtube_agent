@@ -1045,6 +1045,13 @@ if __name__ == "__main__":
     for d in ["output/sozler", "output/tarih", "data", "music_cache"]:
         Path(d).mkdir(parents=True, exist_ok=True)
 
+    # Token'ları env variable'lardan oluştur (Railway için)
+    try:
+        from token_manager import setup_tokens
+        setup_tokens()
+    except Exception as e:
+        print(f"  ⚠ Token setup hatası: {e}")
+
     print("=" * 50)
     print("  YouTube AI Agent Dashboard")
     print("  http://localhost:5051")
