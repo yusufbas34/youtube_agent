@@ -326,26 +326,8 @@ async def _tts_edge(text, path):
 
 def generate_tts(text, path):
     """ElevenLabs ile TTS üret, hata olursa edge_tts'e düş."""
-    try:
-        from config import ELEVENLABS_API_KEY
-        if not ELEVENLABS_API_KEY:
-            raise ValueError("API key yok")
-        import httpx
-        from elevenlabs import ElevenLabs, save
-        http_client = httpx.Client(verify=False)
-        client = ElevenLabs(api_key=ELEVENLABS_API_KEY, httpx_client=http_client)
-        audio = client.text_to_speech.convert(
-            text=text,
-            voice_id="NfwyWIJnRR1RrYnStGUG",  # Tarih sesi
-            model_id="eleven_multilingual_v2",
-            voice_settings={"stability": 0.35, "similarity_boost": 0.80,
-                           "style": 0.45, "use_speaker_boost": True},
-        )
-        save(audio, path)
-        print(f"    ✅ ElevenLabs TTS: {os.path.basename(path)}")
-    except Exception as e:
-        print(f"    ⚠ ElevenLabs hata ({e}), edge_tts kullanılıyor...")
-        asyncio.run(_tts_edge(text, path))
+    from elevenlabs_helper import generate_tts_with_fallback
+    generate_tts_with_fallback(text, path, channel="tarih")
 
 
 # ── ANA FONKSİYON ─────────────────────────────────────────────────
