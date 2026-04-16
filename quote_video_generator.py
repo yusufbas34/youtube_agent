@@ -178,24 +178,8 @@ async def _tts_edge(text, path):
 
 
 def generate_tts(text, path):
-    try:
-        from config import ELEVENLABS_API_KEY
-        if not ELEVENLABS_API_KEY:
-            raise ValueError("API key yok")
-        import httpx
-        from elevenlabs import ElevenLabs, save
-        client = ElevenLabs(api_key=ELEVENLABS_API_KEY, httpx_client=httpx.Client(verify=False))
-        audio = client.text_to_speech.convert(
-            text=text,
-            voice_id="t8fOU8zfPVWFYN34BllH",  # Sözler sesi
-            model_id="eleven_multilingual_v2",
-            voice_settings={"stability":0.4,"similarity_boost":0.8,"style":0.3,"use_speaker_boost":True},
-        )
-        save(audio, path)
-        print(f"  ✅ ElevenLabs TTS (Sözler)")
-    except Exception as e:
-        print(f"  ⚠ ElevenLabs hata ({e}), edge_tts kullanılıyor...")
-        asyncio.run(_tts_edge(text, path))
+    from elevenlabs_helper import generate_tts_with_fallback
+    generate_tts_with_fallback(text, path, channel="sozler")
     return path
 
 
@@ -298,9 +282,7 @@ def create_quote_video(quote: dict, output_path: str,
     final_video.write_videofile(
         output_path, fps=24,
         codec="libx264", audio_codec="aac",
-        logger=None, threads=2,
-        preset="ultrafast",
-        ffmpeg_params=["-crf","28"]
+        logger=None, threads=4
     )
 
     for f in tmp.glob("q_*"):
