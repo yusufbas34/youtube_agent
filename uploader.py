@@ -25,6 +25,55 @@ SCOPES = [
 ]
 
 
+def _update_railway_token(channel: str, token_json: str):
+    """Token yenilenince Railway environment variable'ını günceller."""
+    try:
+        import base64, requests
+        railway_token = os.environ.get("RAILWAY_API_TOKEN","edfd243f-0e6a-49fd-9f0d-517ca4351208")
+        service_id    = os.environ.get("RAILWAY_SERVICE_ID","51f736b9-8452-4480-b021-21be0309d378")
+        environment_id = os.environ.get("RAILWAY_ENVIRONMENT_ID","e9b46eb4-8154-45a9-92e4-7b1b7a010f97")
+        if not railway_token or not service_id:
+            return  # Railway değil veya API token yok
+
+        env_key_map = {
+            "sozler": "TOKEN_SOZLER",
+            "tarih":  "TOKEN_TARIH",
+            "viral":  "TOKEN_VIRAL",
+        }
+        env_key = env_key_map.get(channel)
+        if not env_key:
+            return
+
+        b64_value = base64.b64encode(token_json.encode()).decode()
+
+        # Railway GraphQL API
+        query = """
+        mutation UpsertVariables($input: VariableCollectionUpsertInput!) {
+          variableCollectionUpsert(input: $input)
+        }
+        """
+        variables = {
+            "input": {
+                "serviceId": service_id,
+                "environmentId": environment_id,
+                "variables": {env_key: b64_value}
+            }
+        }
+        r = requests.post(
+            "https://backboard.railway.app/graphql/v2",
+            json={"query": query, "variables": variables},
+            headers={"Authorization": f"Bearer {railway_token}",
+                     "Content-Type": "application/json"},
+            timeout=10
+        )
+        if r.status_code == 200:
+            print(f"  ✅ Railway {env_key} güncellendi")
+        else:
+            print(f"  ⚠ Railway API: {r.status_code}")
+    except Exception as e:
+        print(f"  ⚠ Railway token güncelleme başarısız: {e}")
+
+
 def get_authenticated_service(channel: str = "sozler"):
     """OAuth2 ile YouTube API istemcisi oluşturur."""
     TOKEN_MAP = {
@@ -51,15 +100,17 @@ def get_authenticated_service(channel: str = "sozler"):
         if credentials.expired and credentials.refresh_token:
             print(f"  → Token süresi dolmuş, yenileniyor...")
             try:
-                import httpx
-                from google.auth.transport.requests import Request as GRequest
                 import requests as req_lib
                 session = req_lib.Session()
                 session.verify = False
+                from google.auth.transport.requests import Request as GRequest
                 credentials.refresh(GRequest(session=session))
+                # Dosyaya kaydet
                 with open(token_file, "w", encoding="utf-8") as f:
                     f.write(credentials.to_json())
                 print(f"  ✅ Token yenilendi: {token_file}")
+                # Railway'de environment variable'ı güncelle
+                _update_railway_token(channel, credentials.to_json())
             except Exception as e:
                 print(f"  ⚠ Token yenilenemedi ({e}), yeniden giriş gerekiyor...")
                 credentials = None
