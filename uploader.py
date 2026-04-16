@@ -29,9 +29,9 @@ def _update_railway_token(channel: str, token_json: str):
     """Token yenilenince Railway environment variable'ını günceller."""
     try:
         import base64, requests
-        railway_token = os.environ.get("RAILWAY_API_TOKEN","edfd243f-0e6a-49fd-9f0d-517ca4351208")
-        service_id    = os.environ.get("RAILWAY_SERVICE_ID","51f736b9-8452-4480-b021-21be0309d378")
-        environment_id = os.environ.get("RAILWAY_ENVIRONMENT_ID","e9b46eb4-8154-45a9-92e4-7b1b7a010f97")
+        railway_token = os.environ.get("RAILWAY_API_TOKEN","")
+        service_id    = os.environ.get("RAILWAY_SERVICE_ID","")
+        environment_id = os.environ.get("RAILWAY_ENVIRONMENT_ID","")
         if not railway_token or not service_id:
             return  # Railway değil veya API token yok
 
@@ -101,18 +101,50 @@ def get_authenticated_service(channel: str = "sozler"):
             print(f"  → Token süresi dolmuş, yenileniyor...")
             try:
                 import requests as req_lib
-                session = req_lib.Session()
-                session.verify = False
-                from google.auth.transport.requests import Request as GRequest
-                credentials.refresh(GRequest(session=session))
-                # Dosyaya kaydet
-                with open(token_file, "w", encoding="utf-8") as f:
-                    f.write(credentials.to_json())
-                print(f"  ✅ Token yenilendi: {token_file}")
-                # Railway'de environment variable'ı güncelle
-                _update_railway_token(channel, credentials.to_json())
+                # Credentials dosyasından client_id ve client_secret al
+                token_data = json.loads(open(token_file, "r", encoding="utf-8").read())
+                client_id     = token_data.get("client_id", "")
+                client_secret = token_data.get("client_secret", "")
+                refresh_token = token_data.get("refresh_token", "") or credentials.refresh_token
+
+                if not client_id or not client_secret:
+                    # credentials dosyasından al
+                    if os.path.exists(creds_file):
+                        creds_data  = json.loads(open(creds_file, "r", encoding="utf-8").read())
+                        installed   = creds_data.get("installed", creds_data)
+                        client_id   = installed.get("client_id", "")
+                        client_secret = installed.get("client_secret", "")
+
+                r = req_lib.post(
+                    "https://oauth2.googleapis.com/token",
+                    data={
+                        "client_id":     client_id,
+                        "client_secret": client_secret,
+                        "refresh_token": refresh_token,
+                        "grant_type":    "refresh_token",
+                    },
+                    verify=False,
+                    timeout=15,
+                )
+                if r.status_code == 200:
+                    new_token = r.json()
+                    token_data["token"] = new_token["access_token"]
+                    import datetime as _dt
+                    expiry = _dt.datetime.utcnow() + _dt.timedelta(seconds=new_token.get("expires_in", 3600))
+                    token_data["expiry"] = expiry.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                    new_json = json.dumps(token_data, indent=2)
+                    with open(token_file, "w", encoding="utf-8") as f:
+                        f.write(new_json)
+                    print(f"  ✅ Token yenilendi: {token_file}")
+                    _update_railway_token(channel, new_json)
+                    # Yeni credentials oluştur
+                    from google.oauth2.credentials import Credentials
+                    credentials = Credentials.from_authorized_user_file(token_file, SCOPES)
+                else:
+                    print(f"  ⚠ Token refresh HTTP {r.status_code}: {r.text[:100]}")
+                    credentials = None
             except Exception as e:
-                print(f"  ⚠ Token yenilenemedi ({e}), yeniden giriş gerekiyor...")
+                print(f"  ⚠ Token yenilenemedi ({e})")
                 credentials = None
         else:
             credentials = None
