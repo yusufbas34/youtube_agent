@@ -32,7 +32,7 @@ def get_font(size):
     return ImageFont.load_default()
 
 
-async def _tts_edge(text, path):
+async def _tts(text, path):
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode    = ssl.CERT_NONE
@@ -43,8 +43,7 @@ async def _tts_edge(text, path):
 
 
 def generate_tts(text, path):
-    from elevenlabs_helper import generate_tts_with_fallback
-    generate_tts_with_fallback(text, path, channel="viral")
+    asyncio.run(_tts(text, path))
 
 
 def download_with_ytdlp(tweet_url: str, output_path: str) -> bool:
@@ -142,12 +141,6 @@ def create_viral_video(tweet: dict, output_path: str = None) -> str | None:
     tweet_url  = tweet.get("link","")
     tweet_id   = tweet.get("tweet_id","x")
 
-    # "Video" kelimesini metinden temizle
-    import re as _re
-    clean_text = _re.sub(r'\s*\bVideo\b\.?\s*$', '', text, flags=_re.IGNORECASE).strip()
-    clean_text = _re.sub(r'^\s*\bVideo\b\.?\s*', '', clean_text, flags=_re.IGNORECASE).strip()
-    tts_text   = clean_text if clean_text else text
-
     print(f"\n  📱 Viral video: {text[:50]}...")
     print(f"  🔗 URL: {tweet_url}")
 
@@ -185,7 +178,7 @@ def create_viral_video(tweet: dict, output_path: str = None) -> str | None:
     clip = clip.resize((W, H))
 
     # 4. Overlay ekle (PIL ile üretilmiş static frame)
-    overlay_img = make_overlay_frame(clean_text, W, H)
+    overlay_img = make_overlay_frame(text, W, H)
     overlay_arr = np.array(overlay_img)
 
     def apply_overlay(frame):
@@ -199,7 +192,7 @@ def create_viral_video(tweet: dict, output_path: str = None) -> str | None:
     # 5. TTS
     print(f"  🎙 Seslendirme...")
     tts_path = str(TMP_DIR / f"tts_{tweet_id}.mp3")
-    generate_tts(tts_text, tts_path)
+    generate_tts(text, tts_path)
     tts_audio = AudioFileClip(tts_path)
     if tts_audio.duration > duration:
         tts_audio = tts_audio.subclip(0, duration)
@@ -219,10 +212,17 @@ def create_viral_video(tweet: dict, output_path: str = None) -> str | None:
     clip.write_videofile(
         output_path, fps=FPS,
         codec="libx264", audio_codec="aac",
-        logger=None, threads=6,
+        logger=None, threads=2,
         preset="ultrafast",
         ffmpeg_params=["-crf","26"]
     )
+
+    # Bellek temizle
+    try:
+        clip.close()
+        tts_audio.close()
+    except: pass
+    import gc; gc.collect()
 
     # Temizle
     for f in [tts_path, tmp_vid]:
@@ -231,8 +231,8 @@ def create_viral_video(tweet: dict, output_path: str = None) -> str | None:
 
     # Metadata
     meta = {
-        "title":       (clean_text[:85] + " #viral #shorts").strip(),
-        "description": clean_text + f"\n\nKaynak: {tweet_url}\n\n#viral #shorts #gundem #trending",
+        "title":       (text[:85] + " #viral #shorts").strip(),
+        "description": text + f"\n\nKaynak: {tweet_url}\n\n#viral #shorts #gundem #trending",
         "tags":        ["viral","shorts","gundem","trending","son dakika"],
         "hashtags":    ["#viral","#shorts","#gundem"],
         "tweet_id":    tweet_id,
