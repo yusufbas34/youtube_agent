@@ -3,7 +3,7 @@ Dashboard Sunucusu — Çok Kanallı
 Flask ile çalışır. http://localhost:5051
 """
 
-import os, json, threading, glob
+import os, json, threading, glob, re, subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file, send_from_directory
@@ -12,6 +12,27 @@ from quotes_manager import refresh_quotes, mark_quote_used, delete_quote
 from quote_video_generator import create_quote_video
 from generate_dashboard import generate_dashboard
 from config import UPLOAD_TIME, UPLOAD_TIMEZONE
+
+
+# ── Telegram Bildirimi ────────────────────────────────────────────
+
+def send_telegram(message: str):
+    """Video yüklenince Telegram'a bildirim gönderir."""
+    try:
+        import requests, urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        token   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+        if not token or not chat_id:
+            return
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat_id, "text": message,
+                  "parse_mode": "HTML", "disable_web_page_preview": True},
+            timeout=10, verify=False
+        )
+    except Exception as e:
+        print(f"  ⚠ Telegram hata: {e}")
 
 app = Flask(__name__)
 
@@ -708,8 +729,7 @@ def api_tarih_generate():
                         result["video_url"] = upload["url"]
                         add_to_history("tarih", video_path, upload.get("video_id",""), upload["url"], cp["title"])
                         remove_from_queue_by_path("tarih", video_path)
-                        log(f"Yüklendi: {upload['url']}", "tarih")
-                        send_telegram(f"✅ <b>Tarih</b> yüklendi!\n🏛 {cp['title'][:80]}\n🔗 {upload['url']}")
+                        log("Yüklendi: {upload['url']}", "tarih")
                         from history_content_generator import update_format_analytics
                         update_format_analytics(fmt, 0, 0)
                     except Exception as e:
@@ -918,7 +938,6 @@ def api_viral_produce():
                         add_to_history("viral", vpath, result.get("video_id",""),
                                       result["url"], cp["title"])
                         log(f"Yüklendi: {result['url']}", "viral")
-                        send_telegram(f"✅ <b>Viral</b> yüklendi!\n📱 {cp['title'][:80]}\n🔗 {result['url']}")
                     except Exception as e:
                         log(f"Yükleme hatası: {str(e)}", "viral")
 
@@ -969,6 +988,13 @@ if __name__ == "__main__":
     for d in ["output/sozler", "output/tarih", "data", "music_cache"]:
         Path(d).mkdir(parents=True, exist_ok=True)
 
+    # Token'ları env variable'lardan oluştur (Railway için)
+    try:
+        from token_manager import setup_tokens
+        setup_tokens()
+    except Exception as e:
+        print(f"  ⚠ Token setup hatası: {e}")
+
     print("=" * 50)
     print("  YouTube AI Agent Dashboard")
     print("  http://localhost:5051")
@@ -988,17 +1014,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"  Zamanlayıcı başlatılamadı: {str(e)}")
 
-    # Telegram Bot — arka planda başlat
-    import threading as _thr
-    def _start_bot():
-        import time; time.sleep(5)  # Flask tamamen başlasın
-        try:
-            from telegram_bot import start_bot_thread
-            start_bot_thread()
-            print("  🤖 Telegram bot başlatıldı")
-        except Exception as e:
-            print(f"  ⚠ Telegram bot başlatılamadı: {str(e)}")
-    _thr.Thread(target=_start_bot, daemon=True).start()
-
     print("=" * 50)
-    app.run(host="0.0.0.0", port=5051, debug=False)
+    port = int(os.environ.get("PORT", 5051))
+    app.run(host="0.0.0.0", port=port, debug=False)
