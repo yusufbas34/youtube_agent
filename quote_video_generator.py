@@ -178,7 +178,8 @@ async def _tts(text, path):
 
 
 def generate_tts(text, path):
-    asyncio.run(_tts(text, path))
+    from elevenlabs_helper import generate_tts_with_fallback
+    generate_tts_with_fallback(text, path, channel="sozler")
     return path
 
 
