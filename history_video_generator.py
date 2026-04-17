@@ -404,9 +404,16 @@ def create_history_video(content: dict, output_path: str = None) -> str:
             "dramatic moody landscape",
         ]
 
-    # Görselleri indir
-    print(f"  🔍 Görseller aranıyor...")
-    urls   = fetch_images(pexels_q, count=len(segments)+2)
+    # Görselleri indir — her sorgu için farklı resim al
+    print(f"  🔍 Görseller aranıyor ({len(pexels_q)} sorgu)...")
+    import random as _random
+    # Sorguları karıştır — her çalıştırmada farklı sıra
+    shuffled_q = pexels_q.copy()
+    _random.shuffle(shuffled_q)
+    # Her segment için farklı arama yap
+    urls = fetch_images(shuffled_q, count=len(segments)+3)
+    # URL'leri de karıştır — aynı sırayı önle
+    _random.shuffle(urls)
     images = []
     for url in urls:
         img = download_image(url)
@@ -466,7 +473,9 @@ def create_history_video(content: dict, output_path: str = None) -> str:
         show_hdr  = (i == 0)
         sd        = seg_durations[i]
 
-        def make_frame(t, _img=img_arr, _txt=seg_text, _sd=sd,
+        # Altyazı: narration metni varsa onu, yoksa text'i kullan
+        narration_text = seg.get("narration") or seg.get("text","")
+        def make_frame(t, _img=img_arr, _txt=narration_text, _sd=sd,
                        _zi=zoom_in, _dir=direction, _i=i, _sh=show_hdr):
             frame = ken_burns(Image.fromarray(_img), t, _sd, _zi, _dir)
             return add_overlay(
@@ -479,11 +488,11 @@ def create_history_video(content: dict, output_path: str = None) -> str:
         # Ses: 0.3s gecikmeyle başlat, segmentin kendi TTS'i
         # Audio: 0.3s gecikmeli başlat, sona 0.3s fade out ekle
         _aclip = seg_audio_clips[i]
-        _aend  = min(seg_durations[i], _aclip.duration + 0.3)
-        # Fade out — ani kesilmeyi önle
-        fade_dur = min(0.3, _aclip.duration * 0.1)
-        _aclip_faded = _aclip.audio_fadeout(fade_dur)
-        seg_audio = _aclip_faded.set_start(0.3).set_end(_aend)
+        # Ses süresi video süresini aşmasın, 0.5s fade out ile yumuşat
+        fade_dur = min(0.5, _aclip.duration * 0.15)
+        _aclip_faded = _aclip.audio_fadeout(fade_dur).audio_fadein(0.1)
+        # set_end kaldırıldı — ses kendi doğal süresinde biter
+        seg_audio = _aclip_faded.set_start(0.2)
         vc = VideoClip(make_frame, duration=sd).set_audio(seg_audio)
         clips.append(vc)
 
