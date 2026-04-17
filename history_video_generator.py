@@ -18,7 +18,7 @@ from moviepy.editor import (
 import edge_tts
 
 W, H       = 1080, 1920
-FPS        = 20
+FPS        = 24
 OUTPUT_DIR = Path("output/tarih")
 
 from platform_helper import FONT_PATHS, LOGO_PATH, ensure_dirs
@@ -201,7 +201,7 @@ def ease_out(t):
 def ken_burns(img: Image.Image, t: float, duration: float,
               zoom_in=True, direction="center") -> np.ndarray:
     p    = min(1.0, t / max(duration, 0.01))
-    zoom = 1.0 + 0.08*p if zoom_in else 1.08 - 0.08*p
+    zoom = 1.0 + 0.18*p if zoom_in else 1.18 - 0.18*p
     dirs = {
         "center": (0.5,  0.45),
         "left":   (0.35+0.15*p, 0.45),
@@ -211,7 +211,7 @@ def ken_burns(img: Image.Image, t: float, duration: float,
     }
     cx, cy = dirs.get(direction, (0.5, 0.45))
     nw, nh = int(W*zoom), int(H*zoom)
-    zoomed = img.resize((nw, nh), Image.BILINEAR)
+    zoomed = img.resize((nw, nh), Image.LANCZOS)
     left   = max(0, min(int(cx*nw - W/2), nw-W))
     top    = max(0, min(int(cy*nh - H/2), nh-H))
     return np.array(zoomed.crop((left, top, left+W, top+H)))
@@ -477,10 +477,13 @@ def create_history_video(content: dict, output_path: str = None) -> str:
             )
 
         # Ses: 0.3s gecikmeyle başlat, segmentin kendi TTS'i
-        # set_end audio süresini + 0.3s başlangıç offsetini aşmamalı
+        # Audio: 0.3s gecikmeli başlat, sona 0.3s fade out ekle
         _aclip = seg_audio_clips[i]
         _aend  = min(seg_durations[i], _aclip.duration + 0.3)
-        seg_audio = _aclip.set_start(0.3).set_end(_aend)
+        # Fade out — ani kesilmeyi önle
+        fade_dur = min(0.3, _aclip.duration * 0.1)
+        _aclip_faded = _aclip.audio_fadeout(fade_dur)
+        seg_audio = _aclip_faded.set_start(0.3).set_end(_aend)
         vc = VideoClip(make_frame, duration=sd).set_audio(seg_audio)
         clips.append(vc)
 
@@ -488,11 +491,11 @@ def create_history_video(content: dict, output_path: str = None) -> str:
     intro_clip = make_logo_clip(intro_dur, fade_out=False)
     outro_clip = make_logo_clip(2.5, fade_out=True)
 
-    # Giriş ses + intro klibi
-    # set_end intro_audio süresini aşmamalı
+    # Giriş ses + intro klibi (fade out ile)
     intro_audio_end = min(intro_dur, intro_audio.duration + 0.3)
+    intro_audio_faded = intro_audio.audio_fadeout(0.3)
     intro_clip = intro_clip.set_audio(
-        intro_audio.set_start(0.3).set_end(intro_audio_end)
+        intro_audio_faded.set_start(0.3).set_end(intro_audio_end)
     )
 
     content_clip = concatenate_videoclips(clips, method="chain")
@@ -531,9 +534,9 @@ def create_history_video(content: dict, output_path: str = None) -> str:
     final.write_videofile(
         output_path, fps=FPS,
         codec="libx264", audio_codec="aac",
-        logger=None, threads=2,
+        logger=None, threads=8,
         preset="ultrafast",
-        ffmpeg_params=["-crf","28"]
+        ffmpeg_params=["-crf","26"]
     )
 
     # Temp ses dosyalarını temizle
