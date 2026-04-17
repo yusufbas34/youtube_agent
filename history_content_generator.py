@@ -30,7 +30,34 @@ def get_best_format(analytics_data: dict = None) -> str:
     return best
 
 
+def load_used_topics() -> list:
+    """Daha önce kullanılmış konuları yükle."""
+    try:
+        path = "data/tarih_used_topics.json"
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except: pass
+    return []
+
+
+def save_used_topic(topic: str):
+    """Kullanılan konuyu kaydet."""
+    try:
+        path = "data/tarih_used_topics.json"
+        os.makedirs("data", exist_ok=True)
+        topics = load_used_topics()
+        topics.append({"topic": topic, "date": datetime.now().isoformat()})
+        topics = topics[-100:]  # Son 100 konu
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(topics, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"  ⚠ Konu kayıt hata: {e}")
+
+
 def build_prompt(topic, format_type, today):
+    used = load_used_topics()
+    used_list = ", ".join([t["topic"] for t in used[-30:]]) if used else "yok"
     topic_prompt = f'Konu: "{topic}"' if topic else f"Bugün ({today}) yaşanan tarihi bir olay veya ilginç tarih konusu. Titanik veya çok bilinen olaylar KULLANMA, daha az bilinen ama ilginç konular seç."
     format_descriptions = {
         "timeline":    "Kronolojik sırayla gelişen olaylar (başlangıç → gelişme → sonuç)",
@@ -47,6 +74,7 @@ Sen YouTube Shorts için Türkçe tarih videoları üreten bir içerik üreticis
 Video formatı: {fmt_desc}
 
 ÖNEMLİ: Her seferinde FARKLI ve AZ BİLİNEN bir konu seç. Titanik, Fatih Sultan Mehmet gibi çok işlenmiş konulardan kaçın.
+Son kullanılan konular (BUNLARI KULLANMA): {used_list}
 
 Sadece JSON döndür (başka hiçbir şey yazma):
 {{
@@ -198,6 +226,8 @@ def generate_history_content(topic: str = None, format_type: str = "timeline") -
     content = parse_response(text)
     content["format"]       = format_type
     content["generated_at"] = datetime.now().isoformat()
+    # Konuyu kaydet
+    save_used_topic(content.get("topic", content.get("title", "bilinmiyor")))
     return content
 
 
