@@ -736,11 +736,13 @@ def api_tarih_generate():
                         result["video_url"] = upload["url"]
                         add_to_history("tarih", video_path, upload.get("video_id",""), upload["url"], cp["title"])
                         remove_from_queue_by_path("tarih", video_path)
-                        log("Yüklendi: {upload['url']}", "tarih")
+                        log(f"Yüklendi: {upload['url']}", "tarih")
+                        send_telegram(f"✅ <b>Tarih</b> yüklendi!\n🏛 {cp['title'][:80]}\n🔗 {upload['url']}")
                         from history_content_generator import update_format_analytics
                         update_format_analytics(fmt, 0, 0)
                     except Exception as e:
-                        log("Yükleme hatası: {e}", "tarih")
+                        log(f"Yükleme hatası: {str(e)}", "tarih")
+                        import traceback; traceback.print_exc()
 
             TARIH_STATUS["completed"].append(result)
             STATUS["completed"] = []  # Sözler log'unu temizle
