@@ -1,33 +1,22 @@
 """
 Telegram Bot — YouTube Agent Komutları
-/tarih  → Tarih videosu üret + yükle
-/sozler → Söz videosu üret + yükle
-/viral  → Tweet kontrol et + video yap + yükle
-/durum  → Kanal durumları
-/iptal  → Çalışan işlemi durdur
 """
 
-import os, json, threading, time, requests, urllib3
+import os, json, threading, time, requests, urllib3, re
 from datetime import datetime
 from pathlib import Path
 
-# SSL uyarılarını sustur
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 
 def get_bot_token():
     return os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
-
 def get_chat_id():
     return os.environ.get("TELEGRAM_CHAT_ID", "")
 
-
 def send(text: str, chat_id: str = None):
-    """Telegram'a mesaj gönder."""
     token = get_bot_token()
-    if not token:
-        return
+    if not token: return
     cid = chat_id or get_chat_id()
     try:
         requests.post(
@@ -39,17 +28,16 @@ def send(text: str, chat_id: str = None):
     except Exception as e:
         print(f"  ⚠ Telegram send hata: {e}")
 
+_running = {}
+_pending_selection = {}  # {chat_id: [quote1, quote2, ...]}
 
-# ── Komut İşleyiciler ─────────────────────────────────────────────
 
-_running = {}  # {"tarih": True, "sozler": False, ...}
-
+# ── Tarih ────────────────────────────────────────────────────────
 
 def cmd_tarih(chat_id: str, topic: str = None):
     if _running.get("tarih"):
         send("⏳ Tarih videosu zaten üretiliyor, bekle...", chat_id)
         return
-
     _running["tarih"] = True
     send(f"🎬 Tarih videosu üretimi başladı{' — ' + topic if topic else ''}...", chat_id)
 
@@ -64,8 +52,8 @@ def cmd_tarih(chat_id: str, topic: str = None):
             send("🤖 İçerik üretiliyor...", chat_id)
             content = generate_history_content(topic=topic, format_type="timeline")
             send(f"📝 Konu: <b>{content['title'][:70]}</b>", chat_id)
-
             send("🎥 Video render ediliyor (~5-10 dk)...", chat_id)
+
             ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
             out = f"output/tarih/tarih_{ts}.mp4"
             Path("output/tarih").mkdir(parents=True, exist_ok=True)
@@ -85,12 +73,9 @@ def cmd_tarih(chat_id: str, topic: str = None):
             }
             result = run_upload(cp, video_path, scheduled_time=None,
                                channel_id=TARIH_CHANNEL_ID, channel="tarih")
-            send(
-                f"✅ <b>Tarih</b> yüklendi!\n"
-                f"🏛 {cp['title'][:80]}\n"
-                f"🔗 {result['url']}",
-                chat_id
-            )
+            # History kaydet
+            _save_history("tarih", video_path, result, cp["title"])
+            send(f"✅ <b>Tarih</b> yüklendi!\n🏛 {cp['title'][:80]}\n🔗 {result['url']}", chat_id)
         except Exception as e:
             send(f"❌ Tarih hatası: {str(e)[:200]}", chat_id)
             print(f"  ⚠ telegram cmd_tarih hata: {e}")
@@ -100,29 +85,60 @@ def cmd_tarih(chat_id: str, topic: str = None):
     threading.Thread(target=run, daemon=True).start()
 
 
-def cmd_sozler(chat_id: str):
+# ── Sözler ───────────────────────────────────────────────────────
+
+def cmd_sozler(chat_id: str, custom_text: str = None):
+    """
+    /sozler "söz metni" → direkt o sözü yap
+    /sozler             → listeden 10 seçenek sun
+    """
     if _running.get("sozler"):
         send("⏳ Söz videosu zaten üretiliyor, bekle...", chat_id)
         return
 
+    # Özel söz verilmişse direkt üret
+    if custom_text:
+        quote = {
+            "id":       f"tg_{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            "text":     custom_text,
+            "author":   "Anonim",
+            "category": "motivasyon",
+            "used":     False,
+        }
+        _produce_sozler(chat_id, quote)
+        return
+
+    # Liste sun
+    try:
+        from quotes_manager import load_quotes
+        quotes = [q for q in load_quotes() if not q.get("used")][:10]
+        if not quotes:
+            send("❌ Kullanılabilir söz bulunamadı!", chat_id)
+            return
+
+        _pending_selection[chat_id] = quotes
+        lines = ["📋 <b>Söz seç (1-10):</b>\n"]
+        for i, q in enumerate(quotes, 1):
+            text   = q.get("text", "")[:60]
+            author = q.get("author", "")
+            suffix = f" <i>— {author}</i>" if author and author != "Anonim" else ""
+            lines.append(f"{i}. {text}...{suffix}")
+        lines.append("\n<i>Numara yaz seç, veya /sozler \"kendi sözün\" ile özel söz gir</i>")
+        send("\n".join(lines), chat_id)
+    except Exception as e:
+        send(f"❌ Hata: {str(e)[:200]}", chat_id)
+
+
+def _produce_sozler(chat_id: str, quote: dict):
+    """Sözü video yapıp yükle, history'e kaydet."""
     _running["sozler"] = True
-    send("🎬 Söz videosu üretimi başladı...", chat_id)
+    send(f"🎬 Video üretiliyor...\n📝 <i>{quote.get('text','')[:80]}</i>", chat_id)
 
     def run():
         try:
-            from quotes_manager import get_next_quote, mark_quote_used
             from quote_video_generator import create_quote_video
             from uploader import run_upload
             from channel_config import SOZLER_CHANNEL_ID
-            import json as _json
-
-            quote = get_next_quote()
-            if not quote:
-                send("❌ Kullanılabilir söz bulunamadı!", chat_id)
-                return
-
-            send(f"📝 Söz: <i>{quote.get('text','')[:80]}</i>", chat_id)
-            send("🎥 Video üretiliyor...", chat_id)
 
             ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
             out = f"output/sozler/quote_{ts}.mp4"
@@ -139,27 +155,34 @@ def cmd_sozler(chat_id: str):
             }
             result = run_upload(cp, video_path, scheduled_time=None,
                                channel_id=SOZLER_CHANNEL_ID, channel="sozler")
-            mark_quote_used(quote["id"], result["url"])
-            send(
-                f"✅ <b>Sözler</b> yüklendi!\n"
-                f"📝 {quote.get('text','')[:80]}\n"
-                f"🔗 {result['url']}",
-                chat_id
-            )
+
+            # Kullanıldı işaretle
+            try:
+                if quote.get("id") and not str(quote["id"]).startswith("tg_"):
+                    from quotes_manager import mark_quote_used
+                    mark_quote_used(quote["id"], result["url"])
+            except Exception as me:
+                print(f"  ⚠ mark_quote_used hata: {me}")
+
+            # History kaydet
+            _save_history("sozler", video_path, result, cp["title"])
+
+            send(f"✅ <b>Sözler</b> yüklendi!\n📝 {quote.get('text','')[:80]}\n🔗 {result['url']}", chat_id)
         except Exception as e:
             send(f"❌ Sözler hatası: {str(e)[:200]}", chat_id)
-            print(f"  ⚠ telegram cmd_sozler hata: {e}")
+            print(f"  ⚠ telegram _produce_sozler hata: {e}")
         finally:
             _running["sozler"] = False
 
     threading.Thread(target=run, daemon=True).start()
 
 
+# ── Viral ─────────────────────────────────────────────────────────
+
 def cmd_viral(chat_id: str):
     if _running.get("viral"):
         send("⏳ Viral işlem zaten çalışıyor, bekle...", chat_id)
         return
-
     _running["viral"] = True
     send("🔍 Tweet'ler kontrol ediliyor...", chat_id)
 
@@ -169,9 +192,7 @@ def cmd_viral(chat_id: str):
             from viral_video_generator import create_viral_video
             from uploader import run_upload
             from channel_config import VIRAL_CHANNEL_ID
-            import json as _json, re
 
-            # Yeni tweet kontrol
             new_tweets = check_new_tweets(force=True)
             queue = load_queue()
 
@@ -181,10 +202,9 @@ def cmd_viral(chat_id: str):
 
             if new_tweets:
                 added = add_to_viral_queue(new_tweets)
-                send(f"📥 {len(new_tweets)} yeni tweet bulundu, {added} kuyruğa eklendi.", chat_id)
+                send(f"📥 {len(new_tweets)} yeni tweet, {added} kuyruğa eklendi.", chat_id)
                 queue = load_queue()
 
-            # İlk bekleyen tweet'i al
             pending = [q for q in queue if q.get("status") == "bekliyor"]
             if not pending:
                 send("📭 Bekleyen tweet yok.", chat_id)
@@ -207,9 +227,9 @@ def cmd_viral(chat_id: str):
             mp = vpath.replace(".mp4", ".json")
             if os.path.exists(mp):
                 with open(mp, "r", encoding="utf-8") as f:
-                    meta = _json.load(f)
+                    meta = json.load(f)
 
-            raw_title = meta.get("title", item["text"][:90])
+            raw_title   = meta.get("title", item["text"][:90])
             clean_title = re.sub(r'\s*\bVideo\b\s*$', '', raw_title, flags=re.IGNORECASE).strip()
             cp = {
                 "title":       clean_title[:90],
@@ -219,12 +239,8 @@ def cmd_viral(chat_id: str):
             }
             result = run_upload(cp, vpath, scheduled_time=None,
                                channel_id=VIRAL_CHANNEL_ID, channel="viral")
-            send(
-                f"✅ <b>Viral</b> yüklendi!\n"
-                f"📱 {clean_title[:80]}\n"
-                f"🔗 {result['url']}",
-                chat_id
-            )
+            _save_history("viral", vpath, result, cp["title"])
+            send(f"✅ <b>Viral</b> yüklendi!\n📱 {clean_title[:80]}\n🔗 {result['url']}", chat_id)
         except Exception as e:
             send(f"❌ Viral hatası: {str(e)[:200]}", chat_id)
             print(f"  ⚠ telegram cmd_viral hata: {e}")
@@ -234,39 +250,55 @@ def cmd_viral(chat_id: str):
     threading.Thread(target=run, daemon=True).start()
 
 
+# ── Yardımcılar ───────────────────────────────────────────────────
+
+def _save_history(channel: str, video_path: str, result: dict, title: str):
+    """Yüklenen videoyu history dosyasına kaydet."""
+    try:
+        hist_path = f"data/{channel}_history.json"
+        os.makedirs("data", exist_ok=True)
+        hist = []
+        if os.path.exists(hist_path):
+            with open(hist_path, "r", encoding="utf-8") as f:
+                hist = json.load(f)
+        hist.append({
+            "video_path":  video_path,
+            "video_id":    result.get("video_id", ""),
+            "url":         result.get("url", ""),
+            "title":       title,
+            "uploaded_at": datetime.now().isoformat(),
+            "source":      "telegram",
+        })
+        with open(hist_path, "w", encoding="utf-8") as f:
+            json.dump(hist, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"  ⚠ History kayıt hata ({channel}): {e}")
+
+
 def cmd_durum(chat_id: str):
     lines = ["📊 <b>Kanal Durumları</b>\n"]
     for ch, emoji in [("tarih","🏛"), ("sozler","📝"), ("viral","📱")]:
         durum = "🔄 Çalışıyor" if _running.get(ch) else "✅ Boşta"
         lines.append(f"{emoji} <b>{ch.capitalize()}</b>: {durum}")
-
-    # Kaç video bekliyor
     try:
         for ch in ["sozler", "tarih", "viral"]:
-            import json as _json
             p = f"data/{ch}_queue.json"
             if os.path.exists(p):
                 with open(p, "r", encoding="utf-8") as f:
-                    q = _json.load(f)
+                    q = json.load(f)
                 pending = len([x for x in q if x.get("status") == "bekliyor"])
                 if pending:
-                    lines.append(f"   ↳ {pending} video bekliyor")
+                    lines.append(f"   ↳ {pending} bekliyor")
     except: pass
-
     lines.append(f"\n🕐 {datetime.now().strftime('%H:%M:%S')}")
     send("\n".join(lines), chat_id)
 
 
 def cmd_iptal(chat_id: str):
-    stopped = []
-    for ch in list(_running.keys()):
-        if _running.get(ch):
-            _running[ch] = False
-            stopped.append(ch)
-    if stopped:
-        send(f"🛑 Durduruldu: {', '.join(stopped)}", chat_id)
-    else:
-        send("ℹ️ Çalışan işlem yok.", chat_id)
+    stopped = [ch for ch in list(_running.keys()) if _running.get(ch)]
+    for ch in stopped:
+        _running[ch] = False
+    send(f"🛑 Durduruldu: {', '.join(stopped)}" if stopped else "ℹ️ Çalışan işlem yok.", chat_id)
 
 
 def cmd_yardim(chat_id: str):
@@ -274,7 +306,8 @@ def cmd_yardim(chat_id: str):
         "🤖 <b>YouTube Agent Bot</b>\n\n"
         "/tarih — Tarih videosu üret + yükle\n"
         "/tarih &lt;konu&gt; — Belirli konuda tarih videosu\n"
-        "/sozler — Söz videosu üret + yükle\n"
+        '/sozler — 10 söz listesi sun, numara seç\n'
+        '/sozler "söz metni" — Özel söz ile video yap\n'
         "/viral — Tweet kontrol et + video yap + yükle\n"
         "/durum — Kanal durumları\n"
         "/iptal — Çalışan işlemi durdur\n"
@@ -283,26 +316,34 @@ def cmd_yardim(chat_id: str):
     )
 
 
-# ── Polling Loop ──────────────────────────────────────────────────
+# ── Polling ───────────────────────────────────────────────────────
 
 def handle_update(update: dict):
     msg = update.get("message") or update.get("edited_message")
-    if not msg:
-        return
+    if not msg: return
     chat_id = str(msg.get("chat", {}).get("id", ""))
     text    = (msg.get("text") or "").strip()
 
-    # Sadece yetkili chat'ten komut al
     allowed = get_chat_id()
     if allowed and chat_id != allowed:
         send("⛔ Yetkisiz erişim.", chat_id)
         return
 
-    if not text.startswith("/"):
+    # Numara seçimi (bekleyen liste varsa)
+    if chat_id in _pending_selection and text.strip().isdigit():
+        idx    = int(text.strip()) - 1
+        quotes = _pending_selection.get(chat_id, [])
+        if 0 <= idx < len(quotes):
+            del _pending_selection[chat_id]
+            _produce_sozler(chat_id, quotes[idx])
+        else:
+            send(f"❌ Geçersiz numara. 1-{len(quotes)} arası yaz.", chat_id)
         return
 
+    if not text.startswith("/"): return
+
     parts   = text.split(None, 1)
-    command = parts[0].lower().split("@")[0]  # /tarih@botname → /tarih
+    command = parts[0].lower().split("@")[0]
     args    = parts[1].strip() if len(parts) > 1 else ""
 
     print(f"  📨 Telegram komut: {command} {args}")
@@ -310,7 +351,9 @@ def handle_update(update: dict):
     if command == "/tarih":
         cmd_tarih(chat_id, topic=args if args else None)
     elif command == "/sozler":
-        cmd_sozler(chat_id)
+        match  = re.search(r'["\'](.*?)["\']', args, re.DOTALL)
+        custom = match.group(1).strip() if match else None
+        cmd_sozler(chat_id, custom_text=custom)
     elif command == "/viral":
         cmd_viral(chat_id)
     elif command == "/durum":
@@ -324,15 +367,12 @@ def handle_update(update: dict):
 
 
 def start_polling():
-    """Long polling ile Telegram güncellemelerini dinle."""
     token = get_bot_token()
     if not token:
         print("  ⚠ TELEGRAM_BOT_TOKEN yok, bot başlatılmadı")
         return
-
     print("  🤖 Telegram bot başlatıldı")
     send("🤖 YouTube Agent Bot başladı!\n/yardim — komutları görmek için")
-
     offset = 0
     while True:
         try:
@@ -342,27 +382,22 @@ def start_polling():
                 timeout=35, verify=False
             )
             if r.status_code == 200:
-                data = r.json()
-                for update in data.get("result", []):
+                for update in r.json().get("result", []):
                     offset = update["update_id"] + 1
-                    try:
-                        handle_update(update)
-                    except Exception as e:
-                        print(f"  ⚠ Update işleme hatası: {e}")
+                    try: handle_update(update)
+                    except Exception as e: print(f"  ⚠ Update hatası: {e}")
         except requests.exceptions.Timeout:
-            pass  # Normal — long polling timeout
+            pass
         except Exception as e:
-            print(f"  ⚠ Telegram polling hata: {e}")
+            print(f"  ⚠ Polling hata: {e}")
             time.sleep(5)
 
 
 def start_bot_thread():
-    """Dashboard ile aynı process'te thread olarak başlat."""
     t = threading.Thread(target=start_polling, daemon=True, name="TelegramBot")
     t.start()
     return t
 
 
 if __name__ == "__main__":
-    print("Telegram bot test modunda başlatılıyor...")
     start_polling()
