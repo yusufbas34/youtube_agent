@@ -187,7 +187,11 @@ def produce_videos(queue: list, auto_upload: bool, scheduled_hour: int = None):
                     from uploader import run_upload
                     from upload_scheduler import make_scheduled_time as mst
                     h, m = map(int, UPLOAD_TIME.split(":"))
-                    sched = mst(scheduled_hour if scheduled_hour else h, 0)
+                    # scheduled_hour None, "now", "" = anlık; sayı = planla
+                    if not scheduled_hour or scheduled_hour == "now":
+                        sched = None
+                    else:
+                        sched = mst(int(scheduled_hour), 0)
                     from channel_config import SOZLER_CHANNEL_ID
                     upload = run_upload(meta, video_path, scheduled_time=sched, channel_id=SOZLER_CHANNEL_ID)
                     result["video_url"] = upload["url"]
@@ -375,7 +379,10 @@ def api_upload_local():
         log(f"Yukleme basladi: {os.path.basename(video_path)}", channel)
         try:
             h, m  = map(int, UPLOAD_TIME.split(":"))
-            sched = make_scheduled_time(scheduled_hour if scheduled_hour else h, 0)
+            if not scheduled_hour or scheduled_hour == "now":
+                sched = None
+            else:
+                sched = make_scheduled_time(int(scheduled_hour), 0)
             meta  = {}
             mp    = video_path.replace(".mp4",".json")
             if os.path.exists(mp):
