@@ -7,9 +7,12 @@ Telegram Bot — YouTube Agent Komutları
 /iptal  → Çalışan işlemi durdur
 """
 
-import os, json, threading, time, requests
+import os, json, threading, time, requests, urllib3
 from datetime import datetime
 from pathlib import Path
+
+# SSL uyarılarını sustur
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def get_bot_token():
