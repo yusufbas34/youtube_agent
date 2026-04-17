@@ -1014,6 +1014,18 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"  Zamanlayıcı başlatılamadı: {str(e)}")
 
+    # Telegram Bot — 5s gecikmeyle başlat
+    import threading as _thr
+    def _start_bot():
+        import time; time.sleep(5)
+        try:
+            from telegram_bot import start_bot_thread
+            start_bot_thread()
+            print("  🤖 Telegram bot başlatıldı")
+        except Exception as e:
+            print(f"  ⚠ Telegram bot başlatılamadı: {str(e)}")
+    _thr.Thread(target=_start_bot, daemon=True).start()
+
     print("=" * 50)
     port = int(os.environ.get("PORT", 5051))
     app.run(host="0.0.0.0", port=port, debug=False)
