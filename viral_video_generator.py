@@ -154,12 +154,18 @@ def create_viral_video(tweet: dict, output_path: str = None) -> str | None:
         print(f"  ⬇ yt-dlp ile indiriliyor...")
         ok = download_with_ytdlp(tweet_url, tmp_vid)
 
-    # Tweet URL yoksa veya indirilemediyse search_query ile YouTube'dan ara
+    # Tweet URL yoksa veya indirilemediyse YouTube'dan ara
     if not ok:
         search_query = tweet.get("search_query","")
+        # search_query yoksa text'ten otomatik oluştur
+        if not search_query and text:
+            import re as _re
+            # Türkçe metni İngilizce arama terimine çevir (basit)
+            clean = _re.sub(r'[^\w\s]', ' ', text[:60]).strip()
+            search_query = clean + " viral video short"
         if search_query:
-            print(f"  🔍 YouTube'dan aranıyor: {search_query}")
-            yt_url = f"ytsearch1:{search_query} short vertical"
+            print(f"  🔍 YouTube'dan aranıyor: {search_query[:50]}")
+            yt_url = f"ytsearch1:{search_query}"
             ok = download_with_ytdlp(yt_url, tmp_vid)
 
     if not ok:
