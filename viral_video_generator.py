@@ -149,11 +149,21 @@ def create_viral_video(tweet: dict, output_path: str = None) -> str | None:
     if os.path.exists(tmp_vid):
         os.remove(tmp_vid)
 
-    print(f"  ⬇ yt-dlp ile indiriliyor...")
-    ok = download_with_ytdlp(tweet_url, tmp_vid)
+    ok = False
+    if tweet_url:
+        print(f"  ⬇ yt-dlp ile indiriliyor...")
+        ok = download_with_ytdlp(tweet_url, tmp_vid)
+
+    # Tweet URL yoksa veya indirilemediyse search_query ile YouTube'dan ara
+    if not ok:
+        search_query = tweet.get("search_query","")
+        if search_query:
+            print(f"  🔍 YouTube'dan aranıyor: {search_query}")
+            yt_url = f"ytsearch1:{search_query} short vertical"
+            ok = download_with_ytdlp(yt_url, tmp_vid)
 
     if not ok:
-        print(f"  ❌ Video indirilemedi, tweet atlanıyor")
+        print(f"  ❌ Video indirilemedi, atlanıyor")
         return None
 
     # 2. Video yükle
