@@ -179,39 +179,57 @@ def _produce_sozler(chat_id: str, quote: dict):
 
 # ── Viral ─────────────────────────────────────────────────────────
 
+# Viral seçim bekleme: {chat_id: [item1, item2, ...]}
+_pending_viral = {}
+
+
 def cmd_viral(chat_id: str):
     if _running.get("viral"):
         send("⏳ Viral işlem zaten çalışıyor, bekle...", chat_id)
         return
+
+    send("🔍 İçerik kontrol ediliyor...", chat_id)
+
+    def fetch():
+        try:
+            from viral_scraper import check_new_tweets, add_to_viral_queue, load_queue
+
+            new_tweets = check_new_tweets(force=True)
+            if new_tweets:
+                add_to_viral_queue(new_tweets)
+
+            queue   = load_queue()
+            pending = [q for q in queue if q.get("status") == "bekliyor"][:10]
+
+            if not pending:
+                send("📭 Bekleyen içerik yok.", chat_id)
+                return
+
+            _pending_viral[chat_id] = pending
+            lines = [f"📋 <b>Viral içerik seç (1-{len(pending)}):</b>\n"]
+            for i, item in enumerate(pending, 1):
+                text   = item.get("text","")[:70]
+                source = item.get("source","")
+                has_v  = "🎥" if item.get("has_video") else "📝"
+                lines.append(f"{i}. {has_v} {text}...")
+            lines.append("\n<i>Numara yaz → video üret + yükle</i>")
+            send("\n".join(lines), chat_id)
+        except Exception as e:
+            send(f"❌ Hata: {str(e)[:200]}", chat_id)
+
+    threading.Thread(target=fetch, daemon=True).start()
+
+
+def _produce_viral(chat_id: str, item: dict):
+    """Seçilen viral içeriği video yapıp yükle."""
     _running["viral"] = True
-    send("🔍 Tweet'ler kontrol ediliyor...", chat_id)
+    send(f"🎬 Video üretiliyor...\n📱 <i>{item.get('text','')[:80]}</i>", chat_id)
 
     def run():
         try:
-            from viral_scraper import check_new_tweets, add_to_viral_queue, load_queue
             from viral_video_generator import create_viral_video
             from uploader import run_upload
             from channel_config import VIRAL_CHANNEL_ID
-
-            new_tweets = check_new_tweets(force=True)
-            queue = load_queue()
-
-            if not new_tweets and not queue:
-                send("📭 Yeni tweet veya bekleyen video yok.", chat_id)
-                return
-
-            if new_tweets:
-                added = add_to_viral_queue(new_tweets)
-                send(f"📥 {len(new_tweets)} yeni tweet, {added} kuyruğa eklendi.", chat_id)
-                queue = load_queue()
-
-            pending = [q for q in queue if q.get("status") == "bekliyor"]
-            if not pending:
-                send("📭 Bekleyen tweet yok.", chat_id)
-                return
-
-            item = pending[0]
-            send(f"🎬 Video üretiliyor:\n<i>{item['text'][:80]}</i>", chat_id)
 
             ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
             out = f"output/viral/viral_{ts}.mp4"
@@ -219,7 +237,7 @@ def cmd_viral(chat_id: str):
             vpath = create_viral_video(item, out)
 
             if not vpath:
-                send("❌ Video indirilemedi (tweet'te video olmayabilir).", chat_id)
+                send("❌ Video indirilemedi.", chat_id)
                 return
 
             send("📤 YouTube'a yükleniyor...", chat_id)
@@ -239,11 +257,23 @@ def cmd_viral(chat_id: str):
             }
             result = run_upload(cp, vpath, scheduled_time=None,
                                channel_id=VIRAL_CHANNEL_ID, channel="viral")
+
+            # Queue'dan sil
+            try:
+                from viral_scraper import load_queue, save_queue
+                q = load_queue()
+                for qi in q:
+                    if qi.get("id") == item.get("id"):
+                        qi["status"] = "yuklendi"
+                        qi["video_url"] = result["url"]
+                save_queue(q)
+            except: pass
+
             _save_history("viral", vpath, result, cp["title"])
             send(f"✅ <b>Viral</b> yüklendi!\n📱 {clean_title[:80]}\n🔗 {result['url']}", chat_id)
         except Exception as e:
             send(f"❌ Viral hatası: {str(e)[:200]}", chat_id)
-            print(f"  ⚠ telegram cmd_viral hata: {e}")
+            print(f"  ⚠ telegram _produce_viral hata: {e}")
         finally:
             _running["viral"] = False
 
@@ -329,16 +359,27 @@ def handle_update(update: dict):
         send("⛔ Yetkisiz erişim.", chat_id)
         return
 
-    # Numara seçimi (bekleyen liste varsa)
-    if chat_id in _pending_selection and text.strip().isdigit():
-        idx    = int(text.strip()) - 1
-        quotes = _pending_selection.get(chat_id, [])
-        if 0 <= idx < len(quotes):
-            del _pending_selection[chat_id]
-            _produce_sozler(chat_id, quotes[idx])
-        else:
-            send(f"❌ Geçersiz numara. 1-{len(quotes)} arası yaz.", chat_id)
-        return
+    # Numara seçimi
+    if text.strip().isdigit():
+        idx = int(text.strip()) - 1
+        # Söz seçimi
+        if chat_id in _pending_selection:
+            quotes = _pending_selection.get(chat_id, [])
+            if 0 <= idx < len(quotes):
+                del _pending_selection[chat_id]
+                _produce_sozler(chat_id, quotes[idx])
+            else:
+                send(f"❌ Geçersiz numara. 1-{len(quotes)} arası yaz.", chat_id)
+            return
+        # Viral seçimi
+        if chat_id in _pending_viral:
+            items = _pending_viral.get(chat_id, [])
+            if 0 <= idx < len(items):
+                del _pending_viral[chat_id]
+                _produce_viral(chat_id, items[idx])
+            else:
+                send(f"❌ Geçersiz numara. 1-{len(items)} arası yaz.", chat_id)
+            return
 
     if not text.startswith("/"): return
 
