@@ -79,23 +79,86 @@ def fetch_pixabay_video(query: str) -> str | None:
         return None
 
 
+def fetch_pixabay_image(query: str) -> str | None:
+    """Pixabay fotoğraf API'sinden görsel indir, geçici MP4 yap."""
+    try:
+        r = requests.get(
+            "https://pixabay.com/api/",
+            params={"key": PIXABAY_API_KEY, "q": query,
+                    "image_type": "photo", "per_page": 5,
+                    "orientation": "vertical", "safesearch": "true",
+                    "min_width": 800, "min_height": 1200},
+            timeout=15, verify=False
+        )
+        if r.status_code != 200: return None
+        hits = r.json().get("hits", [])
+        if not hits: return None
+        hit = random.choice(hits[:3])
+        url = hit.get("largeImageURL") or hit.get("webformatURL")
+        if not url: return None
+        ir = requests.get(url, timeout=20, verify=False,
+                         headers={"User-Agent": "Mozilla/5.0"})
+        if ir.status_code != 200: return None
+        # Görselden video yap (Ken Burns efekti)
+        from PIL import Image as PILImage
+        import io as _io
+        img = PILImage.open(_io.BytesIO(ir.content)).convert("RGB")
+        # 9:16 crop
+        iw, ih = img.size
+        tgt = VIDEO_SIZE[0] / VIDEO_SIZE[1]
+        if iw/ih > tgt:
+            new_w = int(ih * tgt)
+            left = (iw - new_w) // 2
+            img = img.crop((left, 0, left+new_w, ih))
+        else:
+            new_h = int(iw / tgt)
+            top = (ih - new_h) // 2
+            img = img.crop((0, top, iw, top+new_h))
+        img = img.resize(VIDEO_SIZE)
+        # Görseli geçici MP4'e dönüştür
+        tmp_path = f"output/tmp/pixabay_img_{random.randint(1000,9999)}.mp4"
+        Path("output/tmp").mkdir(parents=True, exist_ok=True)
+        img_arr = np.array(img)
+        from moviepy.editor import ImageClip as _ImageClip
+        clip = _ImageClip(img_arr, duration=60)
+        clip.write_videofile(tmp_path, fps=24, codec="libx264",
+                            logger=None, preset="ultrafast",
+                            ffmpeg_params=["-crf","28"])
+        clip.close()
+        print(f"  ✅ Pixabay fotoğraf → video: {os.path.basename(tmp_path)}")
+        return tmp_path
+    except Exception as e:
+        print(f"  ⚠ Pixabay fotoğraf: {e}")
+        return None
+
+
 def pick_stock_video(exclude=None, query="nature peaceful"):
-    """Lokal stok video varsa kullan, yoksa Pixabay'den indir."""
-    # Lokal stok video dene
+    """Önce Pixabay video dene, olmadı lokal stok video kullan."""
+    # 1. Pixabay video dene
+    print("  → Pixabay'den video indiriliyor...")
+    path = fetch_pixabay_video(query)
+    if path:
+        return path, True
+
+    # 2. Lokal stok video
+    print("  → Lokal stok video aranıyor...")
     if os.path.exists(STOCK_DIR):
         videos = []
         for ext in ["*.mp4","*.MP4","*.mov","*.MOV"]:
             videos += glob.glob(os.path.join(STOCK_DIR, ext))
         if videos:
             avail = [v for v in videos if not (exclude and v in exclude)] or videos
-            return random.choice(avail), False
+            chosen = random.choice(avail)
+            print(f"  → Stok video: {os.path.basename(chosen)}")
+            return chosen, False
 
-    # Pixabay'den indir
-    print("  → Pixabay'den video indiriliyor...")
-    path = fetch_pixabay_video(query)
+    # 3. Pixabay fotoğraf → video
+    print("  → Pixabay fotoğraftan video yapılıyor...")
+    path = fetch_pixabay_image(query)
     if path:
-        return path, True  # True = geçici, sil
-    raise FileNotFoundError("Stok video bulunamadı ve Pixabay'den indirilemedi")
+        return path, True
+
+    raise FileNotFoundError("Hiç video kaynağı bulunamadı")
 
 
 def wrap_text(text, font, max_w, draw):
