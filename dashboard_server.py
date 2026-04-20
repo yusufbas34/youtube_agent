@@ -875,10 +875,12 @@ def api_viral_status():
 def api_viral_check():
     """Yeni tweet'leri kontrol et ve kuyruğa ekle."""
     try:
+        data  = request.json or {}
+        force = data.get("force", False)
         from viral_scraper import check_new_tweets, add_to_viral_queue
-        new_tweets = check_new_tweets()
+        new_tweets = check_new_tweets(force=force)
         added = add_to_viral_queue(new_tweets) if new_tweets else 0
-        return jsonify({"ok":True,"new":len(new_tweets),"added":added})
+        return jsonify({"ok":True,"new":len(new_tweets),"added":added,"force":force})
     except Exception as e:
         return jsonify({"ok":False,"error":str(e)}),500
 
