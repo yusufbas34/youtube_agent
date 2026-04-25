@@ -386,14 +386,15 @@ def make_title_thumbnail(title: str, accent_hex: str = "#d97706") -> np.ndarray:
     if not clean_title:
         clean_title = title[:60]
 
-    fs = 72 if len(clean_title) < 35 else 60 if len(clean_title) < 55 else 50
+    # Daha buyuk, dikkat cekici font boyutu
+    fs = 88 if len(clean_title) < 25 else 76 if len(clean_title) < 40 else 64 if len(clean_title) < 55 else 56
     tf = get_font(fs)
 
     words = clean_title.split()
     lines, cur = [], ""
     for w in words:
         test = (cur + " " + w).strip()
-        if draw.textbbox((0,0), test, font=tf)[2] > W-100 and cur:
+        if draw.textbbox((0,0), test, font=tf)[2] > W-80 and cur:
             lines.append(cur)
             cur = w
         else:
@@ -401,56 +402,48 @@ def make_title_thumbnail(title: str, accent_hex: str = "#d97706") -> np.ndarray:
     if cur:
         lines.append(cur)
 
-    lh = int(fs * 1.35)
+    lh = int(fs * 1.4)
     total_h = len(lines) * lh
-    ty = (H - total_h) // 2 - 80
+    # Tam ortala
+    ty = (H - total_h) // 2
 
     for line in lines:
         bb = draw.textbbox((0,0), line, font=tf)
         lw2 = bb[2]
         x = (W - lw2) // 2
-        for ox, oy in [(-4,-4),(4,-4),(-4,4),(4,4),(0,-5),(0,5),(-5,0),(5,0)]:
-            draw.text((x+ox, ty+oy), line, font=tf, fill=(20,10,5,255))
-        draw.text((x, ty), line, font=tf, fill=(255,245,200,255))
+        # Kalin koyu golge — derinlik hissi
+        for ox, oy in [(-5,-5),(5,-5),(-5,5),(5,5),(0,-6),(0,6),(-6,0),(6,0),
+                       (-3,-3),(3,-3),(-3,3),(3,3)]:
+            draw.text((x+ox, ty+oy), line, font=tf, fill=(10,5,0,255))
+        # Altin/krem ana renk
+        draw.text((x, ty), line, font=tf, fill=(255,245,190,255))
+        # Parlak vurgu — 1px yukari
+        draw.text((x, ty-1), line, font=tf, fill=(255,255,220,180))
         ty += lh
 
     return np.array(bg)
 
 def make_logo_clip(duration: float, fade_out: bool = False,
                    title: str = "", accent_hex: str = "#d97706") -> VideoClip:
-    """Giriş/çıkış klibi — thumbnail frame ile başlar."""
-    # Thumbnail frame (başlık yazılı)
-    if title:
-        try:
-            thumb = make_title_thumbnail(title, accent_hex)
-        except Exception as e:
-            print(f"  ⚠ Thumbnail üretilemedi: {e}")
-            thumb = None
-    else:
+    """Giris klibi — tarihtmblr.png + baslik yazisi, logo yok."""
+    try:
+        thumb = make_title_thumbnail(title, accent_hex) if title else None
+    except Exception as e:
+        print(f"  Thumbnail hata: {e}")
         thumb = None
 
-    # Logo fallback
-    logo_arr = None
-    try:
-        logo_img = Image.open(LOGO_PATH).convert("RGBA")
-        logo_img = logo_img.resize((W, H), Image.LANCZOS)
-        logo_arr = np.array(logo_img.convert("RGB"))
-    except:
-        logo_arr = np.zeros((H, W, 3), dtype=np.uint8)
+    # Fallback: siyah
+    fallback = np.zeros((H, W, 3), dtype=np.uint8)
+    frame_arr = thumb if thumb is not None else fallback
 
-    # İlk frame thumbnail, sonrası logo
     def make_frame(t):
-        # İlk 0.8s thumbnail göster (Shorts için thumbnail bu kare olur)
-        if thumb is not None and t < 0.8:
-            frame = thumb.copy()
-            alpha = min(1.0, t / 0.3) if t < 0.3 else 1.0
+        frame = frame_arr.copy()
+        if t < 0.4:
+            alpha = t / 0.4
+        elif fade_out and t > duration - 0.4:
+            alpha = (duration - t) / 0.4
         else:
-            frame = logo_arr.copy() if logo_arr is not None else np.zeros((H, W, 3), dtype=np.uint8)
             alpha = 1.0
-
-        if fade_out and t > duration - 0.5:
-            alpha = min(alpha, (duration - t) / 0.5)
-
         alpha = max(0.0, min(1.0, alpha))
         return (frame * alpha).astype(np.uint8)
 
@@ -577,7 +570,7 @@ def create_history_video(content: dict, output_path: str = None) -> str:
 
     # Giriş ve çıkış logo klipleri
     intro_clip = make_logo_clip(intro_dur, fade_out=False, title=title, accent_hex=accent_hex)
-    outro_clip = make_logo_clip(2.5, fade_out=True)
+    outro_clip = make_logo_clip(2.5, fade_out=True, title="", accent_hex=accent_hex)
 
     # Giriş ses + intro klibi (fade out ile)
     intro_audio_end = min(intro_dur, intro_audio.duration + 0.3)
