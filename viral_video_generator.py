@@ -212,23 +212,10 @@ def create_viral_video(tweet: dict, output_path: str = None) -> str | None:
 
     clip = clip.fl_image(apply_overlay)
 
-    # 5. TTS
-    print(f"  🎙 Seslendirme...")
-    tts_path = str(TMP_DIR / f"tts_{tweet_id}.mp3")
-    generate_tts(text, tts_path)
-    tts_audio = AudioFileClip(tts_path)
-    if tts_audio.duration > duration:
-        tts_audio = tts_audio.subclip(0, duration)
-
-    # Orijinal ses (düşük) + TTS
+    # 5. Ses — sadece orijinal ses, TTS yok
     if clip.audio:
-        orig = clip.audio.volumex(0.25)
-        tts  = tts_audio.set_start(0.2)
-        audio = CompositeAudioClip([orig, tts])
-    else:
-        audio = tts_audio
-
-    clip = clip.set_audio(audio)
+        audio = clip.audio.volumex(1.0)
+        clip = clip.set_audio(audio)
 
     # 6. Export
     print(f"  💾 Kaydediliyor...")
@@ -243,12 +230,11 @@ def create_viral_video(tweet: dict, output_path: str = None) -> str | None:
     # Bellek temizle
     try:
         clip.close()
-        tts_audio.close()
     except: pass
     import gc; gc.collect()
 
     # Temizle
-    for f in [tts_path, tmp_vid]:
+    for f in [tmp_vid]:
         try: os.remove(f)
         except: pass
 
