@@ -137,9 +137,16 @@ def create_viral_video(tweet: dict, output_path: str = None) -> str | None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = f"output/viral/viral_{ts}.mp4"
 
-    text       = tweet.get("text","")
+    raw_text   = tweet.get("text","")
     tweet_url  = tweet.get("link","")
     tweet_id   = tweet.get("tweet_id","x")
+
+    # "Video" kelimesini her yerden temizle (baş, son, ortada)
+    text = re.sub(r'\s*\bVideo\.?\s*$', '', raw_text, flags=re.IGNORECASE).strip()
+    text = re.sub(r'^\s*\bVideo\.?\s*', '', text, flags=re.IGNORECASE).strip()
+    text = re.sub(r'\s*\bVid\.?\s*$', '', text, flags=re.IGNORECASE).strip()
+    if not text:
+        text = raw_text
 
     print(f"\n  📱 Viral video: {text[:50]}...")
     print(f"  🔗 URL: {tweet_url}")

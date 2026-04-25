@@ -92,10 +92,22 @@ def make_scheduled_time(hour: int, minute: int = 0) -> str:
     import pytz
     tz    = pytz.timezone(UPLOAD_TIMEZONE)
     now   = datetime.now(tz)
-    sched = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    sched = now.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
     if sched <= now:
         sched += timedelta(days=1)
     return sched.isoformat()
+
+
+def safe_sched(raw_hour, default_hour: int = None) -> str | None:
+    """scheduled_hour değerini güvenli şekilde scheduled_time'a çevirir."""
+    if raw_hour is None or raw_hour == "" or raw_hour == "now":
+        return None
+    try:
+        return make_scheduled_time(int(raw_hour), 0)
+    except (ValueError, TypeError):
+        if default_hour is not None:
+            return make_scheduled_time(default_hour, 0)
+        return None
 
 
 # ── Upload History ─────────────────────────────────────────────────
@@ -723,7 +735,11 @@ def api_tarih_generate():
                     try:
                         from uploader import run_upload
                         h, m = map(int, UPLOAD_TIME.split(":"))
-                        sched = make_scheduled_time(data.get("scheduled_hour") or h, 0)
+                        _sh = data.get("scheduled_hour")
+                        if not _sh or _sh == "now" or _sh == "":
+                            sched = None
+                        else:
+                            sched = make_scheduled_time(int(_sh), 0)
                         meta  = load_json(video_path.replace(".mp4",".json"), {})
                         cp = {
                             "title":       meta.get("title", content["title"])[:90],

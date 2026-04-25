@@ -350,27 +350,107 @@ def generate_tts(text, path):
 
 # ── ANA FONKSİYON ─────────────────────────────────────────────────
 
-def make_logo_clip(duration: float, fade_out: bool = False) -> VideoClip:
-    """Tarihtennotlargiriscikis.png'den giriş/çıkış klibi üretir."""
-    # LOGO_PATH comes from platform_helper
+def make_title_thumbnail(title: str, accent_hex: str = "#d97706") -> np.ndarray:
+    """tarihtmblr.png uzerine baslik yazili thumbnail uretir."""
+    import platform
+    IS_WIN = platform.system() == "Windows"
+
+    tmblr_paths = [
+        "tarihtmblr.png",
+        "/app/tarihtmblr.png",
+        r"C:\Users\yusuf.bas\youtube_agent\tarihtmblr.png" if IS_WIN else "/app/tarihtmblr.png",
+    ]
+
+    bg = None
+    for p in tmblr_paths:
+        if os.path.exists(p):
+            try:
+                bg = Image.open(p).convert("RGB")
+                bg = bg.resize((W, H), Image.LANCZOS)
+                print(f"  thumbnail: {p}")
+                break
+            except: pass
+
+    if bg is None:
+        bg = Image.new("RGB", (W, H), (8, 5, 2))
+        draw_bg = ImageDraw.Draw(bg)
+        for y in range(H):
+            t = y / H
+            draw_bg.line([(0,y),(W,y)], fill=(int(8+20*t), int(5+10*t), int(2+5*t)))
+
+    draw = ImageDraw.Draw(bg)
+
+    # Baslik temizle - sadece harf, bosluk ve noktalama
+    import re as _re
+    clean_title = _re.sub(r"[^\w\s\-\:\.\!\?\,]", "", title, flags=_re.UNICODE).strip()
+    if not clean_title:
+        clean_title = title[:60]
+
+    fs = 72 if len(clean_title) < 35 else 60 if len(clean_title) < 55 else 50
+    tf = get_font(fs)
+
+    words = clean_title.split()
+    lines, cur = [], ""
+    for w in words:
+        test = (cur + " " + w).strip()
+        if draw.textbbox((0,0), test, font=tf)[2] > W-100 and cur:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = test
+    if cur:
+        lines.append(cur)
+
+    lh = int(fs * 1.35)
+    total_h = len(lines) * lh
+    ty = (H - total_h) // 2 - 80
+
+    for line in lines:
+        bb = draw.textbbox((0,0), line, font=tf)
+        lw2 = bb[2]
+        x = (W - lw2) // 2
+        for ox, oy in [(-4,-4),(4,-4),(-4,4),(4,4),(0,-5),(0,5),(-5,0),(5,0)]:
+            draw.text((x+ox, ty+oy), line, font=tf, fill=(20,10,5,255))
+        draw.text((x, ty), line, font=tf, fill=(255,245,200,255))
+        ty += lh
+
+    return np.array(bg)
+
+def make_logo_clip(duration: float, fade_out: bool = False,
+                   title: str = "", accent_hex: str = "#d97706") -> VideoClip:
+    """Giriş/çıkış klibi — thumbnail frame ile başlar."""
+    # Thumbnail frame (başlık yazılı)
+    if title:
+        try:
+            thumb = make_title_thumbnail(title, accent_hex)
+        except Exception as e:
+            print(f"  ⚠ Thumbnail üretilemedi: {e}")
+            thumb = None
+    else:
+        thumb = None
+
+    # Logo fallback
+    logo_arr = None
     try:
         logo_img = Image.open(LOGO_PATH).convert("RGBA")
         logo_img = logo_img.resize((W, H), Image.LANCZOS)
         logo_arr = np.array(logo_img.convert("RGB"))
-    except Exception as e:
-        print(f"  ⚠ Logo yüklenemedi ({LOGO_PATH}): {e}")
-        # Fallback: siyah ekran
+    except:
         logo_arr = np.zeros((H, W, 3), dtype=np.uint8)
 
+    # İlk frame thumbnail, sonrası logo
     def make_frame(t):
-        frame = logo_arr.copy()
-        # Fade in ilk 0.5s, fade out son 0.5s
-        if t < 0.5:
-            alpha = t / 0.5
-        elif fade_out and t > duration - 0.5:
-            alpha = (duration - t) / 0.5
+        # İlk 0.8s thumbnail göster (Shorts için thumbnail bu kare olur)
+        if thumb is not None and t < 0.8:
+            frame = thumb.copy()
+            alpha = min(1.0, t / 0.3) if t < 0.3 else 1.0
         else:
+            frame = logo_arr.copy() if logo_arr is not None else np.zeros((H, W, 3), dtype=np.uint8)
             alpha = 1.0
+
+        if fade_out and t > duration - 0.5:
+            alpha = min(alpha, (duration - t) / 0.5)
+
         alpha = max(0.0, min(1.0, alpha))
         return (frame * alpha).astype(np.uint8)
 
@@ -473,10 +553,9 @@ def create_history_video(content: dict, output_path: str = None) -> str:
         show_hdr  = (i == 0)
         sd        = seg_durations[i]
 
-        # Altyazı: narration metni varsa onu, yoksa text'i kullan
-        narration_text = seg.get("narration") or seg.get("text","")
-        def make_frame(t, _img=img_arr, _txt=narration_text, _sd=sd,
-                       _zi=zoom_in, _dir=direction, _i=i, _sh=show_hdr):
+        def make_frame(t, _img=img_arr,
+                       _txt=seg.get("narration") or seg.get("text",""),
+                       _sd=sd, _zi=zoom_in, _dir=direction, _i=i, _sh=show_hdr):
             frame = ken_burns(Image.fromarray(_img), t, _sd, _zi, _dir)
             return add_overlay(
                 frame, t, _txt, _sd, accent_hex,
@@ -497,7 +576,7 @@ def create_history_video(content: dict, output_path: str = None) -> str:
         clips.append(vc)
 
     # Giriş ve çıkış logo klipleri
-    intro_clip = make_logo_clip(intro_dur, fade_out=False)
+    intro_clip = make_logo_clip(intro_dur, fade_out=False, title=title, accent_hex=accent_hex)
     outro_clip = make_logo_clip(2.5, fade_out=True)
 
     # Giriş ses + intro klibi (fade out ile)
