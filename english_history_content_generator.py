@@ -33,7 +33,7 @@ For segments, translate both "text" and "narration" fields.
 For tags/hashtags, use English equivalents."""
 
         msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=3000,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -151,7 +151,7 @@ def _parse(text):
 def _claude(prompt):
     client = get_client()
     msg = client.messages.create(
-        model="claude-sonnet-4-20250514", max_tokens=3000,
+        model="claude-sonnet-4-6", max_tokens=3000,
         messages=[{"role": "user", "content": prompt}]
     )
     return msg.content[0].text.strip()

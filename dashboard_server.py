@@ -681,7 +681,7 @@ Sadece JSON döndür:
 """
 
         msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=4000,
             messages=[{"role":"user","content":prompt}]
         )
@@ -772,8 +772,51 @@ def api_tarih_generate():
                         import traceback; traceback.print_exc()
 
             TARIH_STATUS["completed"].append(result)
-            STATUS["completed"] = []  # Sözler log'unu temizle
+            STATUS["completed"] = []
             generate_dashboard()
+
+            # Notes of History — otomatik İngilizce video üret
+            def produce_notes_bg(tr_content=content, auto_up=data.get("auto_upload", False), sh=data.get("scheduled_hour")):
+                try:
+                    log("Notes of History icin Ingilizce ceviriliyor...", "notesofhistory")
+                    from english_history_content_generator import generate_english_history_content
+                    from history_video_generator import create_history_video
+                    en_content = generate_english_history_content(turkish_content=tr_content)
+                    if not en_content:
+                        log("Ceviri basarisiz", "notesofhistory")
+                        return
+                    log(f"English: {en_content['title'][:60]}", "notesofhistory")
+                    ts2 = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    out2 = f"output/notesofhistory/notes_{ts2}.mp4"
+                    Path("output/notesofhistory").mkdir(parents=True, exist_ok=True)
+                    log("Notes video render ediliyor...", "notesofhistory")
+                    vpath2 = create_history_video(en_content, out2, channel="notesofhistory")
+                    log(f"Notes video hazir: {os.path.basename(vpath2)}", "notesofhistory")
+                    if auto_up and os.path.exists("token_notesofhistory.json"):
+                        from uploader import run_upload
+                        from channel_config import CHANNELS
+                        sched2 = safe_sched(sh)
+                        meta2 = load_json(vpath2.replace(".mp4",".json"), {})
+                        cp2 = {
+                            "title":       meta2.get("title", en_content["title"])[:90],
+                            "description": meta2.get("description",""),
+                            "tags":        meta2.get("tags",[]),
+                            "hashtags":    meta2.get("hashtags",[]),
+                        }
+                        ch_id2 = CHANNELS.get("notesofhistory",{}).get("channel_id","")
+                        upload2 = run_upload(cp2, vpath2, scheduled_time=sched2,
+                                            channel_id=ch_id2, channel="notesofhistory")
+                        add_to_history("notesofhistory", vpath2, upload2.get("video_id",""), upload2["url"], cp2["title"])
+                        log(f"Notes yuklendi: {upload2['url']}", "notesofhistory")
+                        send_telegram(f"✅ <b>Notes of History</b> yuklendi!\n📖 {cp2['title'][:80]}\n🔗 {upload2['url']}")
+                    elif auto_up:
+                        log("token_notesofhistory.json bulunamadi, yuklenemedi", "notesofhistory")
+                except Exception as ne:
+                    log(f"Notes hatasi: {str(ne)}", "notesofhistory")
+                    import traceback; traceback.print_exc()
+
+            threading.Thread(target=produce_notes_bg, daemon=True).start()
+
         except Exception as e:
             log(f"HATA: {str(e)}", "tarih")
             import traceback; traceback.print_exc()
@@ -1000,7 +1043,7 @@ def api_roadmap_tarih():
 Sadece JSON döndür:
 {{"tarih":{{"ozet":"değerlendirme","en_iyi_format":"format analizi","hemen_yapilacaklar":[{{"oncelik":"YUKSEK","aksiyon":"aksiyon","beklenen_etki":"etki"}}],"bu_hafta":[{{"aksiyon":"a","detay":"d"}}],"bu_ay":[{{"aksiyon":"a","detay":"d"}}],"icerik_onerileri":["k1","k2","k3","k4","k5"],"optimizasyon_ipuclari":["i1","i2","i3"]}},"guncellendi":"{datetime.now().strftime('%d.%m.%Y %H:%M')}"}}"""
 
-        msg  = client.messages.create(model="claude-sonnet-4-20250514", max_tokens=2000, messages=[{"role":"user","content":prompt}])
+        msg  = client.messages.create(model="claude-sonnet-4-6", max_tokens=2000, messages=[{"role":"user","content":prompt}])
         text = msg.content[0].text.strip()
         if "```json" in text: text = text.split("```json")[1].split("```")[0]
         elif "```" in text:   text = text.split("```")[1].split("```")[0]

@@ -187,7 +187,7 @@ def generate_viral_topics_with_claude() -> list:
 
         today = datetime.now().strftime("%d %B %Y")
         msg = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=1000,
             messages=[{"role":"user","content":f"""
 Bugün {today}. Türkiye'de son günlerde viral olan veya güncel olan 5 ilginç konu üret.

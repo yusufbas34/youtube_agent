@@ -128,7 +128,7 @@ def analyze_video_content(video_path: str) -> str:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, http_client=http)
 
         resp = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=20,
             messages=[{
                 "role": "user",
