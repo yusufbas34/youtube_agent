@@ -52,24 +52,26 @@ def generate_english_history_content(topic: str = None, format_type: str = "time
                                       turkish_content: dict = None) -> dict:
     """
     İngilizce tarih içeriği üretir.
-    turkish_content verilirse onu çevirir, yoksa direkt İngilizce üretir.
+    turkish_content verilirse MUTLAKA onu çevirir, asla yeni içerik üretmez.
     """
     if turkish_content:
-        # Türkçe içeriği çevir
-        english = translate_content_to_english(turkish_content)
-        if english:
-            english["channel"] = "notesofhistory"
-            english["generated_at"] = datetime.now().isoformat()
-            # İngilizce hashtag'ler
-            english["tags"] = list(set(
-                english.get("tags", []) +
-                ["history","shorts","historical","facts","historyfacts","notesofhistory"]
-            ))[:30]
-            english["hashtags"] = list(set(
-                english.get("hashtags", []) +
-                ["#history","#shorts","#historyfacts","#notesofhistory","#historical"]
-            ))[:15]
-            return english
+        # Türkçe içeriği çevir — 3 deneme
+        for attempt in range(3):
+            english = translate_content_to_english(turkish_content)
+            if english:
+                english["channel"] = "notesofhistory"
+                english["generated_at"] = datetime.now().isoformat()
+                english["tags"] = list(set(
+                    english.get("tags", []) +
+                    ["history","shorts","historical","facts","historyfacts","notesofhistory"]
+                ))[:30]
+                english["hashtags"] = list(set(
+                    english.get("hashtags", []) +
+                    ["#history","#shorts","#historyfacts","#notesofhistory","#historical"]
+                ))[:15]
+                return english
+            print(f"  ⚠ Çeviri denemesi {attempt+1} başarısız, tekrar deneniyor...")
+        raise Exception("Türkçe→İngilizce çeviri 3 denemede başarısız oldu")
 
     # Direkt İngilizce üret
     today = datetime.now().strftime("%B %d")
