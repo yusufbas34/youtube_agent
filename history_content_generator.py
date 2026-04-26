@@ -114,7 +114,7 @@ def parse_response(text):
 def generate_with_claude(prompt):
     client = get_client()
     msg = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-4-5",
         max_tokens=3000,
         messages=[{"role": "user", "content": prompt}]
     )

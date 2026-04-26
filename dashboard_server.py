@@ -684,7 +684,7 @@ Sadece JSON döndür:
 """
 
         msg = client.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-4-5",
             max_tokens=4000,
             messages=[{"role":"user","content":prompt}]
         )
@@ -1047,7 +1047,7 @@ def api_roadmap_tarih():
 Sadece JSON döndür:
 {{"tarih":{{"ozet":"değerlendirme","en_iyi_format":"format analizi","hemen_yapilacaklar":[{{"oncelik":"YUKSEK","aksiyon":"aksiyon","beklenen_etki":"etki"}}],"bu_hafta":[{{"aksiyon":"a","detay":"d"}}],"bu_ay":[{{"aksiyon":"a","detay":"d"}}],"icerik_onerileri":["k1","k2","k3","k4","k5"],"optimizasyon_ipuclari":["i1","i2","i3"]}},"guncellendi":"{datetime.now().strftime('%d.%m.%Y %H:%M')}"}}"""
 
-        msg  = client.messages.create(model="claude-sonnet-4-6", max_tokens=2000, messages=[{"role":"user","content":prompt}])
+        msg  = client.messages.create(model="claude-sonnet-4-5", max_tokens=2000, messages=[{"role":"user","content":prompt}])
         text = msg.content[0].text.strip()
         if "```json" in text: text = text.split("```json")[1].split("```")[0]
         elif "```" in text:   text = text.split("```")[1].split("```")[0]

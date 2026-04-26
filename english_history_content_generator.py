@@ -15,13 +15,10 @@ def get_client():
     return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, http_client=http)
 
 
-def translate_content_to_english(turkish_content: dict) -> dict:
-    """Türkçe içeriği İngilizce'ye çevirir."""
-    try:
-        client = get_client()
-        prompt = f"""Translate this Turkish YouTube Shorts history video content to English.
+def _build_translate_prompt(turkish_content: dict) -> str:
+    return f"""Translate this Turkish YouTube Shorts history video content to English.
 Keep the same structure, dramatic style, and engaging tone.
-The channel is "Notes of History" - make it sound professional and captivating for English audiences.
+The channel is "Notes of History" - make it sound professional and captivating.
 
 Turkish content:
 {json.dumps(turkish_content, ensure_ascii=False, indent=2)}
@@ -32,20 +29,79 @@ Make the title catchy and SEO-friendly for English YouTube.
 For segments, translate both "text" and "narration" fields.
 For tags/hashtags, use English equivalents."""
 
+
+def _parse_translation(text: str) -> dict:
+    if "```json" in text: text = text.split("```json")[1].split("```")[0]
+    elif "```" in text:   text = text.split("```")[1].split("```")[0]
+    return json.loads(text.strip())
+
+
+def translate_content_to_english(turkish_content: dict) -> dict:
+    """Türkçe içeriği İngilizce'ye çevirir. Claude → Gemini → Groq."""
+    prompt = _build_translate_prompt(turkish_content)
+
+    # 1. Claude
+    try:
+        client = get_client()
         msg = client.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-4-5",
             max_tokens=3000,
             messages=[{"role": "user", "content": prompt}]
         )
-        text = msg.content[0].text.strip()
-        if "```json" in text: text = text.split("```json")[1].split("```")[0]
-        elif "```" in text:   text = text.split("```")[1].split("```")[0]
-        english = json.loads(text.strip())
-        print("  ✅ İngilizce çeviri tamamlandı")
-        return english
+        result = _parse_translation(msg.content[0].text.strip())
+        print("  ✅ Claude çeviri tamamlandı")
+        return result
     except Exception as e:
-        print(f"  ⚠ Çeviri hatası: {e}")
-        return None
+        print(f"  ⚠ Claude çeviri hatası: {e}")
+
+    # 2. Gemini
+    try:
+        import requests, os
+        key = os.environ.get("GEMINI_API_KEY","")
+        if not key:
+            try:
+                from config import GEMINI_API_KEY; key=GEMINI_API_KEY
+            except: pass
+        if key:
+            for model in ["gemini-2.0-flash","gemini-1.5-flash-latest"]:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+                    r = requests.post(url, json={"contents":[{"parts":[{"text":prompt}]}],
+                        "generationConfig":{"maxOutputTokens":3000,"temperature":0.3}},
+                        timeout=30, verify=False)
+                    if r.status_code==200:
+                        text = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                        result = _parse_translation(text)
+                        print(f"  ✅ Gemini ({model}) çeviri tamamlandı")
+                        return result
+                except Exception as me:
+                    print(f"  ⚠ Gemini {model}: {me}")
+    except Exception as e:
+        print(f"  ⚠ Gemini çeviri hatası: {e}")
+
+    # 3. Groq
+    try:
+        import requests, os
+        key = os.environ.get("GROQ_API_KEY","")
+        if not key:
+            try:
+                from config import GROQ_API_KEY; key=GROQ_API_KEY
+            except: pass
+        if key:
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
+                json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":prompt}],
+                      "max_tokens":3000,"temperature":0.3}, timeout=30, verify=False)
+            if r.status_code==200:
+                text = r.json()["choices"][0]["message"]["content"].strip()
+                result = _parse_translation(text)
+                print("  ✅ Groq çeviri tamamlandı")
+                return result
+    except Exception as e:
+        print(f"  ⚠ Groq çeviri hatası: {e}")
+
+    print("  ❌ Tüm çeviri servisleri başarısız")
+    return None
 
 
 def generate_english_history_content(topic: str = None, format_type: str = "timeline",
@@ -153,7 +209,7 @@ def _parse(text):
 def _claude(prompt):
     client = get_client()
     msg = client.messages.create(
-        model="claude-sonnet-4-6", max_tokens=3000,
+        model="claude-sonnet-4-5", max_tokens=3000,
         messages=[{"role": "user", "content": prompt}]
     )
     return msg.content[0].text.strip()
