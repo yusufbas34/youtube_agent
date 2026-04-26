@@ -9,13 +9,13 @@ import base64
 
 def setup_tokens():
     """
-    Railway'de TOKEN_SOZLER, TOKEN_TARIH, TOKEN_VIRAL env var'larından
-    token dosyalarını oluşturur. Lokal çalışmada atlar.
+    Railway'de TOKEN_* env var'larından token dosyalarını oluşturur.
     """
     token_map = {
-        "TOKEN_SOZLER": "token.json",
-        "TOKEN_TARIH":  "token_tarih.json",
-        "TOKEN_VIRAL":  "token_viral.json",
+        "TOKEN_SOZLER":         "token.json",
+        "TOKEN_TARIH":          "token_tarih.json",
+        "TOKEN_VIRAL":          "token_viral.json",
+        "TOKEN_NOTESOFHISTORY": "token_notesofhistory.json",
     }
     creds_map = {
         "CREDENTIALS_SOZLER": "credentials.json",
@@ -27,15 +27,13 @@ def setup_tokens():
         val = os.environ.get(env_key)
         if val:
             try:
-                # Base64 decode dene
                 decoded = base64.b64decode(val).decode("utf-8")
                 with open(file_name, "w", encoding="utf-8") as f:
                     f.write(decoded)
                 print(f"  ✅ {file_name} oluşturuldu ({env_key})")
             except Exception as e:
-                # Direkt JSON string olabilir
                 try:
-                    json.loads(val)  # Geçerli JSON mi?
+                    json.loads(val)
                     with open(file_name, "w", encoding="utf-8") as f:
                         f.write(val)
                     print(f"  ✅ {file_name} oluşturuldu ({env_key})")
@@ -53,14 +51,12 @@ def get_token_b64(file_name: str) -> str:
 
 
 if __name__ == "__main__":
-    # Token'ları base64'e çevir ve ekrana yaz
     for fname in ["token.json", "token_tarih.json", "token_viral.json",
-                  "credentials.json", "credentials_tarih.json.json", "credentials_viral.json"]:
+                  "token_notesofhistory.json", "credentials.json",
+                  "credentials_tarih.json.json", "credentials_viral.json"]:
         b64 = get_token_b64(fname)
         if b64:
-            env_key = fname.replace(".json","").replace(".","_").upper()
-            env_key = env_key.replace("TOKEN_JSON","TOKEN_SOZLER")
-            print(f"\n{env_key}={b64[:50]}...")
-            print(f"(Tam değer {len(b64)} karakter)")
+            print(f"\n{fname}: {len(b64)} karakter")
+            print(b64[:80] + "...")
         else:
             print(f"⚠ {fname} bulunamadı")

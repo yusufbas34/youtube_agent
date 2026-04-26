@@ -2,9 +2,10 @@
 Kanal Konfigürasyonu
 """
 
-SOZLER_CHANNEL_ID = "UCaWkRsWG0rSKyfnNJ5T9eXA"
-TARIH_CHANNEL_ID  = "UC3eEPGHol_F5AJD9D3IzxbA"
-VIRAL_CHANNEL_ID  = "UCWNVRMZjIg9DuS-Ig_LmSLw"
+SOZLER_CHANNEL_ID        = "UCaWkRsWG0rSKyfnNJ5T9eXA"
+TARIH_CHANNEL_ID         = "UC3eEPGHol_F5AJD9D3IzxbA"
+VIRAL_CHANNEL_ID         = "UCWNVRMZjIg9DuS-Ig_LmSLw"
+NOTESOFHISTORY_CHANNEL_ID = "UCcBwQBE5tPXrT5yyQVlNlrw"  # YouTube Studio'dan al
 
 CHANNELS = {
     "sozler": {
@@ -39,6 +40,17 @@ CHANNELS = {
         "output_dir":   "output/viral",
         "queue_file":   "data/viral_queue.json",
         "history_file": "data/viral_history.json",
+    },
+    "notesofhistory": {
+        "name":         "Notes of History",
+        "icon":         "📖",
+        "channel_id":   NOTESOFHISTORY_CHANNEL_ID,
+        "color":        "#d97706",
+        "token_file":   "token_notesofhistory.json",
+        "credentials":  "credentials.json",
+        "output_dir":   "output/notesofhistory",
+        "queue_file":   "data/notesofhistory_queue.json",
+        "history_file": "data/notesofhistory_history.json",
     },
 }
 
