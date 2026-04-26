@@ -53,6 +53,14 @@ TARIH_STATUS = {
     "log":       []
 }
 
+NOTES_STATUS = {
+    "running":   False,
+    "current":   None,
+    "completed": [],
+    "errors":    [],
+    "log":       []
+}
+
 
 def log(msg, channel="sozler"):
     ts    = datetime.now().strftime("%H:%M:%S")
@@ -60,6 +68,9 @@ def log(msg, channel="sozler"):
     if channel == "tarih":
         TARIH_STATUS["log"].append(entry)
         TARIH_STATUS["log"] = TARIH_STATUS["log"][-100:]
+    elif channel == "notesofhistory":
+        NOTES_STATUS["log"].append(entry)
+        NOTES_STATUS["log"] = NOTES_STATUS["log"][-100:]
     elif channel == "viral":
         VIRAL_STATUS["log"].append(entry)
         VIRAL_STATUS["log"] = VIRAL_STATUS["log"][-100:]
@@ -772,6 +783,129 @@ def api_tarih_generate():
 
     threading.Thread(target=do_generate, daemon=True).start()
     return jsonify({"ok": True})
+
+
+@app.route("/api/notes/status")
+def api_notes_status():
+    return jsonify(NOTES_STATUS)
+
+
+@app.route("/api/notes/generate", methods=["POST"])
+def api_notes_generate():
+    data = request.json or {}
+
+    def do_generate():
+        NOTES_STATUS["running"]   = True
+        NOTES_STATUS["log"]       = []
+        NOTES_STATUS["completed"] = []
+        NOTES_STATUS["errors"]    = []
+        log("Notes of History videosu uretiliyor...", "notesofhistory")
+        try:
+            from english_history_content_generator import generate_english_history_content
+            from history_content_generator import generate_history_content, get_best_format
+            from history_video_generator import create_history_video
+
+            # Önce Türkçe içerik üret
+            analytics = load_json("data/tarih_analytics.json", {})
+            fmt = data.get("format", "auto")
+            if fmt == "auto":
+                fmt = get_best_format(analytics)
+
+            topic = data.get("topic") or None
+
+            # Türkçe içerik üret
+            log("Turkce icerik uretiliyor...", "notesofhistory")
+            tr_content = generate_history_content(topic=topic, format_type=fmt)
+            log(f"Konu: {tr_content['title'][:60]}", "notesofhistory")
+
+            # İngilizce'ye çevir
+            log("Ingilizce'ye ceviriliyor...", "notesofhistory")
+            en_content = generate_english_history_content(turkish_content=tr_content)
+            if not en_content:
+                raise Exception("Çeviri başarısız")
+            log(f"English: {en_content['title'][:60]}", "notesofhistory")
+
+            # Video üret
+            ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out = f"output/notesofhistory/notes_{ts}.mp4"
+            Path("output/notesofhistory").mkdir(parents=True, exist_ok=True)
+            log("Video render ediliyor...", "notesofhistory")
+            video_path = create_history_video(en_content, out, channel="notesofhistory")
+            log(f"Video hazir: {os.path.basename(video_path)}", "notesofhistory")
+
+            result = {"video_path": video_path, "title": en_content["title"],
+                      "channel": "notesofhistory", "video_url": None}
+
+            if data.get("auto_upload"):
+                if not os.path.exists("token_notesofhistory.json"):
+                    log("Token bulunamadi! create_notesofhistory_token.py calistir.", "notesofhistory")
+                else:
+                    try:
+                        from uploader import run_upload
+                        from channel_config import CHANNELS
+                        _sh = data.get("scheduled_hour")
+                        sched = safe_sched(_sh)
+                        meta = load_json(video_path.replace(".mp4",".json"), {})
+                        cp = {
+                            "title":       meta.get("title", en_content["title"])[:90],
+                            "description": meta.get("description", ""),
+                            "tags":        meta.get("tags", []),
+                            "hashtags":    meta.get("hashtags", []),
+                        }
+                        ch_id = CHANNELS.get("notesofhistory", {}).get("channel_id", "")
+                        upload = run_upload(cp, video_path, scheduled_time=sched,
+                                           channel_id=ch_id, channel="notesofhistory")
+                        result["video_url"] = upload["url"]
+                        add_to_history("notesofhistory", video_path, upload.get("video_id",""), upload["url"], cp["title"])
+                        log(f"Yuklendi: {upload['url']}", "notesofhistory")
+                        send_telegram(f"✅ <b>Notes of History</b> yuklendi!\n📜 {cp['title'][:80]}\n🔗 {upload['url']}")
+                    except Exception as e:
+                        log(f"Yukleme hatasi: {str(e)}", "notesofhistory")
+
+            NOTES_STATUS["completed"].append(result)
+            generate_dashboard()
+        except Exception as e:
+            log(f"HATA: {str(e)}", "notesofhistory")
+            import traceback; traceback.print_exc()
+            NOTES_STATUS["errors"].append({"error": str(e)})
+        finally:
+            NOTES_STATUS["running"] = False
+
+    threading.Thread(target=do_generate, daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/notes/local-videos")
+def api_notes_local_videos():
+    uploaded = {os.path.normpath(p) for p in get_uploaded_paths("notesofhistory")}
+    videos = []
+    for f in sorted(glob.glob("output/notesofhistory/notes_*.mp4"), reverse=True):
+        nf = os.path.normpath(f)
+        is_uploaded = nf in uploaded
+        size_mb = round(os.path.getsize(f)/(1024*1024), 1)
+        basename = os.path.basename(f)
+        meta = {}
+        mp = f.replace(".mp4",".json")
+        if os.path.exists(mp):
+            try:
+                with open(mp,"r",encoding="utf-8") as mf: meta = json.load(mf)
+            except: pass
+        videos.append({
+            "path": f, "filename": basename, "size_mb": size_mb,
+            "url": f"/output/notesofhistory/{basename}",
+            "title": meta.get("title",""),
+            "period": meta.get("period",""),
+            "generated_at": meta.get("generated_at",""),
+            "uploaded": is_uploaded,
+            "video_url": next((h.get("url") for h in load_json("data/notesofhistory_history.json",[])
+                              if os.path.normpath(h.get("video_path",""))==nf), None),
+        })
+    return jsonify({"ok": True, "videos": videos})
+
+
+@app.route("/output/notesofhistory/<path:filename>")
+def serve_notes_output(filename):
+    return send_from_directory("output/notesofhistory", filename)
 
 
 @app.route("/api/tarih/local-videos")

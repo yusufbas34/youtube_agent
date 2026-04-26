@@ -324,31 +324,36 @@ async def _tts_edge(text, path):
     await comm.save(path)
 
 
-def generate_tts(text, path):
-    """ElevenLabs ile TTS üret, hata olursa edge_tts'e düş."""
+def generate_tts(text, path, channel="tarih"):
+    """ElevenLabs ile TTS uret, hata olursa edge_tts kullan."""
     try:
         from config import ELEVENLABS_API_KEY
         if not ELEVENLABS_API_KEY:
             raise ValueError("API key yok")
         import httpx
         from elevenlabs import ElevenLabs, save
+        voice_id = NOTES_VOICE_ID if channel == "notesofhistory" else "NfwyWIJnRR1RrYnStGUG"
         http_client = httpx.Client(verify=False)
         client = ElevenLabs(api_key=ELEVENLABS_API_KEY, httpx_client=http_client)
         audio = client.text_to_speech.convert(
             text=text,
-            voice_id="JBFqnCBsd6RMkjVDRZzb",  # George
+            voice_id=voice_id,
             model_id="eleven_multilingual_v2",
-            voice_settings={"stability": 0.35, "similarity_boost": 0.80,
-                           "style": 0.45, "use_speaker_boost": True},
+            voice_settings={"stability": 0.45, "similarity_boost": 0.80,
+                           "style": 0.50, "use_speaker_boost": True},
         )
         save(audio, path)
-        print(f"    ✅ ElevenLabs TTS: {os.path.basename(path)}")
+        print(f"    ElevenLabs TTS ({channel}): {os.path.basename(path)}")
     except Exception as e:
-        print(f"    ⚠ ElevenLabs hata ({e}), edge_tts kullanılıyor...")
-        asyncio.run(_tts_edge(text, path))
-
-
-# ── ANA FONKSİYON ─────────────────────────────────────────────────
+        print(f"    ElevenLabs hata ({e}), edge_tts kullaniliyor...")
+        voice = "en-US-GuyNeural" if channel == "notesofhistory" else "tr-TR-AhmetNeural"
+        async def _edge_ch(t, p, v):
+            import ssl, edge_tts
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            await edge_tts.Communicate(text=t, voice=v, rate="+5%").save(p)
+        asyncio.run(_edge_ch(text, path, voice))
 
 def make_title_thumbnail(title: str, accent_hex: str = "#d97706") -> np.ndarray:
     """tarihtmblr.png uzerine baslik yazili thumbnail uretir."""
@@ -450,12 +455,16 @@ def make_logo_clip(duration: float, fade_out: bool = False,
     return VideoClip(make_frame, duration=duration)
 
 
-def create_history_video(content: dict, output_path: str = None) -> str:
+def create_history_video(content: dict, output_path: str = None, channel: str = "tarih") -> str:
     if not output_path:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = f"output/tarih/tarih_{ts}.mp4"
+        if channel == "notesofhistory":
+            output_path = f"output/notesofhistory/notes_{ts}.mp4"
+        else:
+            output_path = f"output/tarih/tarih_{ts}.mp4"
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = NOTES_OUTPUT_DIR if channel == "notesofhistory" else OUTPUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     title      = content.get("title","")
     segments   = content.get("segments",[])[:6]
@@ -508,7 +517,8 @@ def create_history_video(content: dict, output_path: str = None) -> str:
     # Giriş TTS: "Tarihten Notlar"
     print(f"  🎙 Giriş sesi...")
     intro_tts_path = output_path.replace(".mp4","_intro_tts.mp3")
-    generate_tts("Tarihten Notlar", intro_tts_path)
+    intro_text = "Notes of History" if channel == "notesofhistory" else "Tarihten Notlar"
+    generate_tts(intro_text, intro_tts_path, channel=channel)
     intro_audio = AudioFileClip(intro_tts_path)
     intro_dur   = max(intro_audio.duration + 0.8, 2.5)
 
@@ -524,7 +534,7 @@ def create_history_video(content: dict, output_path: str = None) -> str:
             seg_text = narration  # fallback
         tts_p = output_path.replace(".mp4", f"_seg{i}_tts.mp3")
         seg_tts_paths.append(tts_p)
-        generate_tts(seg_text, tts_p)
+        generate_tts(seg_text, tts_p, channel=channel)
         aclip = AudioFileClip(tts_p)
         # Segment süresi = TTS süresi + 0.6s nefes payı, min 3s
         sd = max(3.0, aclip.duration + 0.6)
@@ -570,7 +580,25 @@ def create_history_video(content: dict, output_path: str = None) -> str:
 
     # Giriş ve çıkış logo klipleri
     intro_clip = make_logo_clip(intro_dur, fade_out=False, title=title, accent_hex=accent_hex)
-    outro_clip = make_logo_clip(2.5, fade_out=True, title="", accent_hex=accent_hex)
+    # Outro clip — kanal bazlı
+    import platform
+    IS_WIN = platform.system() == "Windows"
+    if channel == "notesofhistory":
+        notes_outro = NOTES_OUTRO_PATH_WIN if IS_WIN else NOTES_OUTRO_PATH_LIN
+        if os.path.exists(notes_outro):
+            try:
+                outro_img = Image.open(notes_outro).convert("RGB").resize((W,H), Image.LANCZOS)
+                outro_arr = np.array(outro_img)
+                def _outro_frame(t):
+                    a = max(0.0, min(1.0, (2.5-t)/0.5))
+                    return (outro_arr * a).astype(np.uint8)
+                outro_clip = VideoClip(_outro_frame, duration=2.5)
+            except:
+                outro_clip = make_logo_clip(2.5, fade_out=True, title="", accent_hex=accent_hex)
+        else:
+            outro_clip = make_logo_clip(2.5, fade_out=True, title="", accent_hex=accent_hex)
+    else:
+        outro_clip = make_logo_clip(2.5, fade_out=True, title="", accent_hex=accent_hex)
 
     # Giriş ses + intro klibi (fade out ile)
     intro_audio_end = min(intro_dur, intro_audio.duration + 0.3)
@@ -646,7 +674,7 @@ def create_history_video(content: dict, output_path: str = None) -> str:
         "topic":        content.get("topic",""),
         "period":       content.get("period",""),
         "format":       content.get("format","timeline"),
-        "channel":      "tarih",
+        "channel":      channel,
         "generated_at": generated_str,
     }
     with open(output_path.replace(".mp4",".json"),"w",encoding="utf-8") as f:
