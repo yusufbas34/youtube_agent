@@ -71,6 +71,9 @@ def log(msg, channel="sozler"):
     elif channel == "notesofhistory":
         NOTES_STATUS["log"].append(entry)
         NOTES_STATUS["log"] = NOTES_STATUS["log"][-100:]
+        # Tarih sayfasında da göster
+        TARIH_STATUS["log"].append(entry)
+        TARIH_STATUS["log"] = TARIH_STATUS["log"][-100:]
     elif channel == "viral":
         VIRAL_STATUS["log"].append(entry)
         VIRAL_STATUS["log"] = VIRAL_STATUS["log"][-100:]
@@ -730,7 +733,7 @@ def api_tarih_generate():
 
             ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
             out = f"output/tarih/tarih_{ts}.mp4"
-            video_path = create_history_video(content, out)
+            video_path = create_history_video(content, out, channel="tarih")
             log(f"Video hazir: {os.path.basename(video_path)}", "tarih")
 
             result = {"video_path": video_path, "title": content["title"],
@@ -813,6 +816,7 @@ def api_tarih_generate():
                         log("token_notesofhistory.json bulunamadi, yuklenemedi", "notesofhistory")
                 except Exception as ne:
                     log(f"Notes hatasi: {str(ne)}", "notesofhistory")
+                    send_telegram(f"❌ <b>Notes of History</b> hatası:\n{str(ne)[:200]}")
                     import traceback; traceback.print_exc()
 
             threading.Thread(target=produce_notes_bg, daemon=True).start()

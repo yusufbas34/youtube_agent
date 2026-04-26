@@ -18,8 +18,14 @@ from moviepy.editor import (
 import edge_tts
 
 W, H       = 1080, 1920
-FPS        = 24
+FPS        = 20
 OUTPUT_DIR = Path("output/tarih")
+
+# Notes of History sabitleri
+NOTES_OUTPUT_DIR     = Path("output/notesofhistory")
+NOTES_VOICE_ID       = "G7ILShrCNLfmS0A37SXS"
+NOTES_OUTRO_PATH_WIN = "notesofhistory.png"
+NOTES_OUTRO_PATH_LIN = "/app/notesofhistory.png"
 
 from platform_helper import FONT_PATHS, LOGO_PATH, ensure_dirs
 ensure_dirs()
