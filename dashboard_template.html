@@ -841,7 +841,7 @@ function loadViralVideos(){
 }
 
 // ── Analiz ────────────────────────────────────────────────────────
-function loadSozlerAnaliz(){
+async function loadSozlerAnaliz(){
   var vs=(PERF&&PERF.video_stats)||{};
   var tv=UPLOAD.length, tw=0,tl=0,tc=0;
   UPLOAD.forEach(function(u){var s=vs[u.video_id||'']||{};tw+=s.views||0;tl+=s.likes||0;tc+=s.comments||0;});
@@ -849,6 +849,14 @@ function loadSozlerAnaliz(){
   document.getElementById('s_tw').textContent=fmt(tw);
   document.getElementById('s_tl').textContent=fmt(tl);
   document.getElementById('s_te').textContent='%'+(tw>0?((tl+tc)/tw*100).toFixed(1):0);
+  if(IS_SRV){try{
+    var r=await fetch('/api/analytics/sozler');var d=await r.json();
+    if(d.ok&&d.total){
+      document.getElementById('s_tw').textContent=fmt(d.total.views);
+      document.getElementById('s_tl').textContent=fmt(d.total.likes);
+      document.getElementById('s_te').textContent='%'+(d.total.views>0?((d.total.likes+d.total.comments)/d.total.views*100).toFixed(1):0);
+    }
+  }catch(e){}}
   // Chart
   var ctx=document.getElementById('s_vc').getContext('2d');
   var vv=UPLOAD.slice(-10).map(function(u){return (vs[u.video_id||'']||{}).views||0;});
@@ -868,10 +876,20 @@ function loadSozlerAnaliz(){
 
 async function loadTarihAnaliz(){
   try{
+    // Canlı YouTube istatistikleri
+    if(IS_SRV){try{
+      var ar=await fetch('/api/analytics/tarih');var ad=await ar.json();
+      if(ad.ok&&ad.total){
+        document.getElementById('t_tv').textContent=ad.total.videos;
+        document.getElementById('t_tw').textContent=fmt(ad.total.views);
+        document.getElementById('t_tl').textContent=fmt(ad.total.likes);
+        document.getElementById('t_te').textContent='%'+(ad.total.views>0?((ad.total.likes+ad.total.comments)/ad.total.views*100).toFixed(1):0);
+      }
+    }catch(e){}}
     var r=await fetch('/api/tarih/local-videos');var d=await r.json();
     var videos=d.videos||[];
-    document.getElementById('t_tv').textContent=videos.length;
-    var h=await fetch('/api/tarih/local-videos');
+    if(!document.getElementById('t_tv').textContent||document.getElementById('t_tv').textContent==='-')
+      document.getElementById('t_tv').textContent=videos.length;
     document.getElementById('t_top').innerHTML=videos.slice(0,5).map(function(v,i){
       return '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">'+
         '<span style="color:var(--tarih2);font-weight:700;min-width:20px">'+(i+1)+'.</span>'+
@@ -883,9 +901,19 @@ async function loadTarihAnaliz(){
 
 async function loadViralAnaliz(){
   try{
+    if(IS_SRV){try{
+      var ar=await fetch('/api/analytics/viral');var ad=await ar.json();
+      if(ad.ok&&ad.total){
+        document.getElementById('v_tv').textContent=ad.total.videos;
+        document.getElementById('v_tw').textContent=fmt(ad.total.views);
+        document.getElementById('v_tl').textContent=fmt(ad.total.likes);
+        document.getElementById('v_te').textContent='%'+(ad.total.views>0?((ad.total.likes+ad.total.comments)/ad.total.views*100).toFixed(1):0);
+      }
+    }catch(e){}}
     var r=await fetch('/api/viral/local-videos');var d=await r.json();
     var videos=d.videos||[];
-    document.getElementById('v_tv').textContent=videos.length;
+    if(!document.getElementById('v_tv').textContent||document.getElementById('v_tv').textContent==='-')
+      document.getElementById('v_tv').textContent=videos.length;
     var upl=videos.filter(function(v){return v.uploaded;});
     document.getElementById('v_vtb').innerHTML=upl.slice(0,10).map(function(v,i){
       return '<tr><td style="color:var(--muted)">'+(i+1)+'</td>'+
@@ -898,9 +926,19 @@ async function loadViralAnaliz(){
 
 async function loadNotesAnaliz(){
   try{
+    if(IS_SRV){try{
+      var ar=await fetch('/api/analytics/notesofhistory');var ad=await ar.json();
+      if(ad.ok&&ad.total){
+        document.getElementById('n_tv').textContent=ad.total.videos;
+        document.getElementById('n_tw').textContent=fmt(ad.total.views);
+        document.getElementById('n_tl').textContent=fmt(ad.total.likes);
+        document.getElementById('n_te').textContent='%'+(ad.total.views>0?((ad.total.likes+ad.total.comments)/ad.total.views*100).toFixed(1):0);
+      }
+    }catch(e){}}
     var r=await fetch('/api/notes/local-videos');var d=await r.json();
     var videos=d.videos||[];
-    document.getElementById('n_tv').textContent=videos.length;
+    if(!document.getElementById('n_tv').textContent||document.getElementById('n_tv').textContent==='-')
+      document.getElementById('n_tv').textContent=videos.length;
     document.getElementById('n_vtb').innerHTML=videos.slice(0,10).map(function(v,i){
       return '<tr><td style="color:var(--muted)">'+(i+1)+'</td>'+
         '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(v.title||v.filename).substring(0,50)+'</td>'+

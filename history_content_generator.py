@@ -55,10 +55,26 @@ def save_used_topic(topic: str):
         print(f"  ⚠ Konu kayıt hata: {e}")
 
 
+def load_youtube_uploaded_topics() -> list:
+    """YouTube'a yüklenen videoların başlıklarını çeker."""
+    topics = []
+    try:
+        hist_path = "data/tarih_history.json"
+        import os as _os, json as _json
+        if _os.path.exists(hist_path):
+            with open(hist_path,"r",encoding="utf-8") as f:
+                hist = _json.load(f)
+            topics = [h.get("title","") for h in hist if h.get("title")]
+    except: pass
+    return topics
+
+
 def build_prompt(topic, format_type, today):
     used = load_used_topics()
-    used_list = ", ".join([t["topic"] for t in used[-30:]]) if used else "yok"
-    topic_prompt = f'Konu: "{topic}"' if topic else f"Bugün ({today}) yaşanan tarihi bir olay veya ilginç tarih konusu. Titanik veya çok bilinen olaylar KULLANMA, daha az bilinen ama ilginç konular seç."
+    used_list = ", ".join([t["topic"] for t in used[-50:]]) if used else "yok"
+    yt_topics = load_youtube_uploaded_topics()
+    yt_list = ", ".join(yt_topics[-30:]) if yt_topics else "yok"
+    topic_prompt = f'Konu: "{topic}"' if topic else f"İlginç, az bilinen, sürpriz bir tarih konusu seç."
     format_descriptions = {
         "timeline":    "Kronolojik sırayla gelişen olaylar (başlangıç → gelişme → sonuç)",
         "illustrated": "Tek bir olay veya kişi hakkında derin anlatım",
@@ -73,8 +89,16 @@ Sen YouTube Shorts için Türkçe tarih videoları üreten bir içerik üreticis
 
 Video formatı: {fmt_desc}
 
-ÖNEMLİ: Her seferinde FARKLI ve AZ BİLİNEN bir konu seç. Titanik, Fatih Sultan Mehmet gibi çok işlenmiş konulardan kaçın.
-Son kullanılan konular (BUNLARI KULLANMA): {used_list}
+KRİTİK KURALLAR:
+1. FARKLI ve AZ BİLİNEN bir konu seç — izleyiciyi şaşırtacak, "bunu bilmiyordum" dedirtecek
+2. Başlık merak uyandırmalı, soru formatında veya şaşırtıcı bir iddia içermeli
+3. Her segment kısa, vurucu, sinematik olmalı — belgesel anlatıcı tonu
+4. narration alanı TTS için doğal konuşma dili olmalı — kısa ve etkili cümleler
+5. full_narration TOPLAM 130-160 kelime olmalı (60 saniye video için kritik!)
+6. Türkçe karakterleri doğru kullan: ğ, ü, ş, ı, ö, ç
+
+Daha önce yüklediklerim (KULLANMA): {yt_list}
+Son kullandığım konular (KULLANMA): {used_list}
 
 Sadece JSON döndür (başka hiçbir şey yazma):
 {{
@@ -88,7 +112,7 @@ Sadece JSON döndür (başka hiçbir şey yazma):
     {{"time": "30-45s","text": "Sonuç/etki",    "narration": "TTS metni", "visual": "görsel açıklaması"}},
     {{"time": "45-60s","text": "İlginç detay",  "narration": "TTS metni", "visual": "görsel açıklaması"}}
   ],
-  "full_narration": "Tam anlatım metni (TTS için, 200-280 kelime)",
+  "full_narration": "Tam anlatım metni (TTS için, 130-160 kelime, yaklaşık 55-60 saniye)",
   "description": "YouTube açıklaması (200-300 karakter)",
   "tags": ["tarih", "shorts", "ilginç"],
   "hashtags": ["#tarih", "#shorts", "#ilginçbilgiler"],

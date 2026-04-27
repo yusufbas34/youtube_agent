@@ -34,32 +34,93 @@ _pending_selection = {}  # {chat_id: [quote1, quote2, ...]}
 
 # ── Tarih ────────────────────────────────────────────────────────
 
+# Tarih konu önerileri bekleme
+_pending_tarih_topics = {}
+
+
+def _generate_tarih_suggestions(chat_id: str):
+    """5 farklı tarih konusu önerisi üretir."""
+    send("🤔 5 konu önerisi hazırlanıyor...", chat_id)
+    try:
+        import httpx, anthropic, json as _json, os as _os
+        from config import ANTHROPIC_API_KEY
+        from history_content_generator import load_used_topics, load_youtube_uploaded_topics
+
+        used = load_used_topics()
+        yt = load_youtube_uploaded_topics()
+        used_list = ", ".join([t["topic"] for t in used[-30:]]) if used else "yok"
+        yt_list = ", ".join(yt[-20:]) if yt else "yok"
+
+        http = httpx.Client(verify=False)
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, http_client=http)
+        msg = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=800,
+            messages=[{"role":"user","content":f"""YouTube Shorts için 5 farklı, ilginç ve az bilinen Türkçe tarih konusu öner.
+Her konu bir Shorts videosu için uygun olmalı — merak uyandıran, şaşırtıcı.
+
+Daha önce yüklediklerim (KULLANMA): {yt_list}
+Son kullanılanlar (KULLANMA): {used_list}
+
+Sadece JSON döndür:
+[
+  {{"konu": "konu başlığı", "aciklama": "neden ilginç, 1 cümle"}},
+  ...
+]"""}]
+        )
+        text = msg.content[0].text.strip()
+        if "```json" in text: text = text.split("```json")[1].split("```")[0]
+        elif "```" in text: text = text.split("```")[1].split("```")[0]
+        suggestions = _json.loads(text.strip())
+
+        _pending_tarih_topics[chat_id] = suggestions
+        lines = ["📋 <b>Konu seç (1-5):</b>\n"]
+        for i, s in enumerate(suggestions[:5], 1):
+            lines.append(f"{i}. 🏛 <b>{s['konu']}</b>\n   <i>{s['aciklama']}</i>")
+        lines.append("\n<i>Numara yaz veya /tarih konu başlığı ile özel konu gir</i>")
+        send("\n\n".join(lines) if len(lines) > 2 else "\n".join(lines), chat_id)
+    except Exception as e:
+        send(f"❌ Öneri üretilemedi: {str(e)[:100]}\n/tarih konuadı ile devam edebilirsin.", chat_id)
+        _pending_tarih_topics.pop(chat_id, None)
+
+
 def cmd_tarih(chat_id: str, topic: str = None):
     if _running.get("tarih"):
         send("⏳ Tarih videosu zaten üretiliyor, bekle...", chat_id)
         return
+
+    # Konu verilmişse direkt üret
+    if topic:
+        threading.Thread(target=_produce_tarih, args=(chat_id, topic), daemon=True).start()
+        return
+
+    # Konu önerileri sun
+    threading.Thread(target=_generate_tarih_suggestions, args=(chat_id,), daemon=True).start()
+
+
+def _produce_tarih(chat_id: str, topic: str = None):
     _running["tarih"] = True
-    send(f"🎬 Tarih videosu üretimi başladı{' — ' + topic if topic else ''}...", chat_id)
+    send(f"🎬 Tarih videosu üretimi başladı{(' — ' + topic) if topic else ''}...", chat_id)
 
     def run():
         try:
             from history_content_generator import generate_history_content, get_best_format
             from history_video_generator import create_history_video
             from uploader import run_upload
-            from channel_config import TARIH_CHANNEL_ID
+            from channel_config import TARIH_CHANNEL_ID, CHANNELS
             import json as _json
 
             send("🤖 İçerik üretiliyor...", chat_id)
             content = generate_history_content(topic=topic, format_type="timeline")
             send(f"📝 Konu: <b>{content['title'][:70]}</b>", chat_id)
-            send("🎥 Video render ediliyor (~5-10 dk)...", chat_id)
+            send("🎥 Türkçe video render ediliyor (~5-10 dk)...", chat_id)
 
             ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
             out = f"output/tarih/tarih_{ts}.mp4"
             Path("output/tarih").mkdir(parents=True, exist_ok=True)
-            video_path = create_history_video(content, out)
+            video_path = create_history_video(content, out, channel="tarih")
 
-            send("📤 YouTube'a yükleniyor...", chat_id)
+            send("📤 Tarih kanalına yükleniyor...", chat_id)
             meta = {}
             mp = video_path.replace(".mp4", ".json")
             if os.path.exists(mp):
@@ -73,12 +134,49 @@ def cmd_tarih(chat_id: str, topic: str = None):
             }
             result = run_upload(cp, video_path, scheduled_time=None,
                                channel_id=TARIH_CHANNEL_ID, channel="tarih")
-            # History kaydet
             _save_history("tarih", video_path, result, cp["title"])
             send(f"✅ <b>Tarih</b> yüklendi!\n🏛 {cp['title'][:80]}\n🔗 {result['url']}", chat_id)
+
+            # Notes of History - aynı içerik İngilizce
+            send("🇬🇧 Notes of History için İngilizce üretiliyor...", chat_id)
+            try:
+                from english_history_content_generator import generate_english_history_content
+                en_content = generate_english_history_content(turkish_content=content)
+                if not en_content:
+                    send("⚠️ İngilizce çeviri başarısız", chat_id)
+                else:
+                    ts2 = datetime.now().strftime("%Y%m%d_%H%M%S") + "_en"
+                    out2 = f"output/notesofhistory/notes_{ts2}.mp4"
+                    Path("output/notesofhistory").mkdir(parents=True, exist_ok=True)
+                    send(f"🎥 İngilizce video render ediliyor...", chat_id)
+                    vpath2 = create_history_video(en_content, out2, channel="notesofhistory")
+                    meta2 = {}
+                    mp2 = vpath2.replace(".mp4", ".json")
+                    if os.path.exists(mp2):
+                        with open(mp2, "r", encoding="utf-8") as f:
+                            meta2 = _json.load(f)
+                    cp2 = {
+                        "title":       meta2.get("title", en_content["title"])[:90],
+                        "description": meta2.get("description", ""),
+                        "tags":        meta2.get("tags", []),
+                        "hashtags":    meta2.get("hashtags", []),
+                    }
+                    ch_id2 = CHANNELS.get("notesofhistory", {}).get("channel_id", "")
+                    if os.path.exists("token_notesofhistory.json") and ch_id2:
+                        send("📤 Notes of History kanalına yükleniyor...", chat_id)
+                        result2 = run_upload(cp2, vpath2, scheduled_time=None,
+                                            channel_id=ch_id2, channel="notesofhistory")
+                        _save_history("notesofhistory", vpath2, result2, cp2["title"])
+                        send(f"✅ <b>Notes of History</b> yüklendi!\n📖 {cp2['title'][:80]}\n🔗 {result2['url']}", chat_id)
+                    else:
+                        send("⚠️ Notes token/kanal ID eksik, yerel kaydedildi", chat_id)
+            except Exception as ne:
+                send(f"❌ Notes hatası: {str(ne)[:150]}", chat_id)
+
         except Exception as e:
             send(f"❌ Tarih hatası: {str(e)[:200]}", chat_id)
-            print(f"  ⚠ telegram cmd_tarih hata: {e}")
+            print(f"  ⚠ telegram tarih hata: {e}")
+            import traceback; traceback.print_exc()
         finally:
             _running["tarih"] = False
 
@@ -362,6 +460,16 @@ def handle_update(update: dict):
     # Numara seçimi
     if text.strip().isdigit():
         idx = int(text.strip()) - 1
+        # Tarih konu seçimi
+        if chat_id in _pending_tarih_topics:
+            topics = _pending_tarih_topics.get(chat_id, [])
+            if 0 <= idx < len(topics):
+                topic = topics[idx]["konu"]
+                del _pending_tarih_topics[chat_id]
+                _produce_tarih(chat_id, topic=topic)
+            else:
+                send(f"❌ Geçersiz numara. 1-{len(topics)} arası yaz.", chat_id)
+            return
         # Söz seçimi
         if chat_id in _pending_selection:
             quotes = _pending_selection.get(chat_id, [])
@@ -390,7 +498,10 @@ def handle_update(update: dict):
     print(f"  📨 Telegram komut: {command} {args}")
 
     if command == "/tarih":
-        cmd_tarih(chat_id, topic=args if args else None)
+        if args:
+            _produce_tarih(chat_id, topic=args)
+        else:
+            cmd_tarih(chat_id)
     elif command == "/sozler":
         match  = re.search(r'["\'](.*?)["\']', args, re.DOTALL)
         custom = match.group(1).strip() if match else None

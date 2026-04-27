@@ -413,7 +413,7 @@ def api_upload_local():
             mp    = video_path.replace(".mp4",".json")
             if os.path.exists(mp):
                 with open(mp,"r",encoding="utf-8") as mf: meta = json.load(mf)
-            ch_id = CHANNELS.get(channel, CHANNELS.get("sozler",{})).get("channel_id")
+            ch_id = CHANNELS.get(channel, {}).get("channel_id") or CHANNELS.get("sozler",{}).get("channel_id")
             log(f"Kanal: {channel} ID: {ch_id}", channel)
             cp = {
                 "title":       (meta.get("title") or os.path.basename(video_path))[:90],
@@ -955,14 +955,39 @@ def serve_notes_output(filename):
     return send_from_directory("output/notesofhistory", filename)
 
 
+@app.route("/api/analytics/<channel>")
+def api_channel_analytics(channel):
+    """Kanal YouTube istatistiklerini döner."""
+    try:
+        hist = load_json(f"data/{channel}_history.json", [])
+        if not hist:
+            return jsonify({"ok": True, "stats": {}, "total": {"views":0,"likes":0,"comments":0,"videos":0}})
+        from uploader import get_authenticated_service
+        youtube = get_authenticated_service(channel)
+        video_ids = [h["video_id"] for h in hist if h.get("video_id")]
+        if not video_ids:
+            return jsonify({"ok": True, "stats": {}, "total": {"views":0,"likes":0,"comments":0,"videos":0}})
+        stats = {}
+        total = {"views":0,"likes":0,"comments":0,"videos":len(video_ids)}
+        for i in range(0, len(video_ids), 50):
+            batch = video_ids[i:i+50]
+            resp = youtube.videos().list(part="statistics,snippet", id=",".join(batch)).execute()
+            for item in resp.get("items", []):
+                s = item.get("statistics", {})
+                v = int(s.get("viewCount",0)); l = int(s.get("likeCount",0)); co = int(s.get("commentCount",0))
+                total["views"]+=v; total["likes"]+=l; total["comments"]+=co
+                stats[item["id"]] = {"title":item["snippet"]["title"],"views":v,"likes":l,"comments":co}
+        return jsonify({"ok": True, "stats": stats, "total": total})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/tarih/local-videos")
 def api_tarih_local_videos():
-    uploaded = get_uploaded_paths("tarih")
-    queued   = get_queued_paths("tarih")
-    videos   = []
+    uploaded_set = set(get_uploaded_paths("tarih"))
+    hist_map = {h.get("video_path",""):h for h in load_json("data/tarih_history.json",[])}
+    videos = []
     for f in sorted(glob.glob("output/tarih/tarih_*.mp4"), reverse=True):
-        if f in uploaded or f in queued:
-            continue
         size_mb = round(os.path.getsize(f)/(1024*1024), 1)
         basename = os.path.basename(f)
         meta = {}
@@ -971,13 +996,18 @@ def api_tarih_local_videos():
             try:
                 with open(mp,"r",encoding="utf-8") as mf: meta = json.load(mf)
             except: pass
+        h = hist_map.get(f, {})
         videos.append({
             "path": f, "filename": basename, "size_mb": size_mb,
             "url": f"/output/tarih/{basename}",
-            "title":  meta.get("title",""),
-            "period": meta.get("period",""),
-            "format": meta.get("format",""),
-            "topic":  meta.get("topic",""),
+            "title":       meta.get("title",""),
+            "period":      meta.get("period",""),
+            "format":      meta.get("format",""),
+            "topic":       meta.get("topic",""),
+            "generated_at":meta.get("generated_at",""),
+            "uploaded":    f in uploaded_set,
+            "video_url":   h.get("url"),
+            "video_id":    h.get("video_id",""),
         })
     return jsonify({"ok": True, "videos": videos})
 
@@ -1140,7 +1170,7 @@ def api_viral_produce():
                             "hashtags":    meta.get("hashtags",["#viral"]),
                         }
                         result = run_upload(cp, vpath, scheduled_time=sched,
-                                           channel="viral")
+                                           channel_id=VIRAL_CHANNEL_ID, channel="viral")
                         item["status"]    = "yuklendi"
                         item["video_url"] = result["url"]
                         add_to_history("viral", vpath, result.get("video_id",""),
@@ -1192,8 +1222,120 @@ def api_viral_local_videos():
 def serve_viral_output(filename):
     return send_from_directory("output/viral", filename)
 
+def run_nightly_production():
+    """Gece 04, 05, 06'da her kanal için video üretir (saat 08:00'de yayınlanmak üzere)."""
+    import threading as _thr
+    log_msg = f"[{datetime.now().strftime('%H:%M')}] Gece üretimi başladı"
+    print(log_msg)
+    send_telegram(f"🌙 Gece otomatik üretim başladı ({datetime.now().strftime('%H:%M')})")
+
+    def produce_sozler():
+        try:
+            from quotes_manager import get_next_quote, mark_quote_used
+            from quote_video_generator import create_quote_video
+            from uploader import run_upload
+            from channel_config import SOZLER_CHANNEL_ID
+            quote = get_next_quote()
+            if not quote:
+                print("  ⚠ Sözler: kullanılabilir söz yok")
+                return
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out = f"output/sozler/quote_{ts}.mp4"
+            Path("output/sozler").mkdir(parents=True, exist_ok=True)
+            create_quote_video(quote, out)
+            meta = {"title":(quote.get("text","")[:85]+" — "+quote.get("author","Anonim")),
+                    "description":quote.get("text","")+"\n\n#motivasyon #shorts",
+                    "tags":["motivasyon","ozlusoz","shorts"],"hashtags":["#motivasyon","#shorts"]}
+            sched = safe_sched(8)
+            result = run_upload(meta, out, scheduled_time=sched, channel_id=SOZLER_CHANNEL_ID, channel="sozler")
+            mark_quote_used(quote["id"], result["url"])
+            add_to_history("sozler", out, result.get("video_id",""), result["url"], meta["title"])
+            send_telegram(f"✅ Gece Sözler yüklendi (08:00)\n📝 {quote.get('text','')[:60]}\n🔗 {result['url']}")
+        except Exception as e:
+            send_telegram(f"❌ Gece Sözler hatası: {str(e)[:150]}")
+            print(f"  ⚠ Gece sözler: {e}")
+
+    def produce_tarih():
+        try:
+            from history_content_generator import generate_history_content, get_best_format
+            from history_video_generator import create_history_video
+            from uploader import run_upload
+            from channel_config import TARIH_CHANNEL_ID, CHANNELS
+            analytics = load_json("data/tarih_analytics.json", {})
+            fmt = get_best_format(analytics)
+            content = generate_history_content(format_type=fmt)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out = f"output/tarih/tarih_{ts}.mp4"
+            Path("output/tarih").mkdir(parents=True, exist_ok=True)
+            create_history_video(content, out, channel="tarih")
+            meta = load_json(out.replace(".mp4",".json"), {})
+            sched = safe_sched(8)
+            result = run_upload({"title":meta.get("title",content["title"])[:90],
+                "description":meta.get("description",""),"tags":meta.get("tags",[]),"hashtags":meta.get("hashtags",[])},
+                out, scheduled_time=sched, channel_id=TARIH_CHANNEL_ID, channel="tarih")
+            add_to_history("tarih", out, result.get("video_id",""), result["url"], meta.get("title",""))
+            send_telegram(f"✅ Gece Tarih yüklendi (08:00)\n🏛 {content['title'][:60]}\n🔗 {result['url']}")
+            # Notes of History
+            try:
+                from english_history_content_generator import generate_english_history_content
+                en = generate_english_history_content(turkish_content=content)
+                if en:
+                    ts2 = datetime.now().strftime("%Y%m%d_%H%M%S")+"_en"
+                    out2 = f"output/notesofhistory/notes_{ts2}.mp4"
+                    Path("output/notesofhistory").mkdir(parents=True, exist_ok=True)
+                    create_history_video(en, out2, channel="notesofhistory")
+                    meta2 = load_json(out2.replace(".mp4",".json"), {})
+                    ch_id2 = CHANNELS.get("notesofhistory",{}).get("channel_id","")
+                    if os.path.exists("token_notesofhistory.json") and ch_id2:
+                        r2 = run_upload({"title":meta2.get("title",en["title"])[:90],
+                            "description":meta2.get("description",""),"tags":meta2.get("tags",[]),"hashtags":meta2.get("hashtags",[])},
+                            out2, scheduled_time=sched, channel_id=ch_id2, channel="notesofhistory")
+                        add_to_history("notesofhistory", out2, r2.get("video_id",""), r2["url"], meta2.get("title",""))
+                        send_telegram(f"✅ Gece Notes yüklendi (08:00)\n📖 {en['title'][:60]}\n🔗 {r2['url']}")
+            except Exception as ne:
+                send_telegram(f"❌ Gece Notes hatası: {str(ne)[:150]}")
+        except Exception as e:
+            send_telegram(f"❌ Gece Tarih hatası: {str(e)[:150]}")
+            print(f"  ⚠ Gece tarih: {e}")
+
+    def produce_viral():
+        try:
+            from viral_scraper import check_new_tweets, add_to_viral_queue, load_queue
+            from viral_video_generator import create_viral_video
+            from uploader import run_upload
+            from channel_config import VIRAL_CHANNEL_ID
+            new_t = check_new_tweets(force=True)
+            if new_t: add_to_viral_queue(new_t)
+            queue = load_queue()
+            pending = [q for q in queue if q.get("status")=="bekliyor"]
+            if not pending:
+                print("  ⚠ Viral: bekleyen tweet yok")
+                return
+            item = pending[0]
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out = f"output/viral/viral_{ts}.mp4"
+            Path("output/viral").mkdir(parents=True, exist_ok=True)
+            vpath = create_viral_video(item, out)
+            if not vpath: return
+            meta = load_json(vpath.replace(".mp4",".json"), {})
+            sched = safe_sched(8)
+            result = run_upload({"title":meta.get("title",item["text"][:90]),
+                "description":meta.get("description","#viral #shorts"),"tags":meta.get("tags",["viral"]),"hashtags":meta.get("hashtags",["#viral"])},
+                vpath, scheduled_time=sched, channel_id=VIRAL_CHANNEL_ID, channel="viral")
+            add_to_history("viral", vpath, result.get("video_id",""), result["url"], meta.get("title",""))
+            send_telegram(f"✅ Gece Viral yüklendi (08:00)\n📱 {item['text'][:60]}\n🔗 {result['url']}")
+        except Exception as e:
+            send_telegram(f"❌ Gece Viral hatası: {str(e)[:150]}")
+            print(f"  ⚠ Gece viral: {e}")
+
+    _thr.Thread(target=produce_sozler, daemon=True).start()
+    import time as _t; _t.sleep(30)
+    _thr.Thread(target=produce_tarih, daemon=True).start()
+    _thr.Thread(target=produce_viral, daemon=True).start()
+
+
 if __name__ == "__main__":
-    for d in ["output/sozler", "output/tarih", "data", "music_cache"]:
+    for d in ["output/sozler", "output/tarih", "output/notesofhistory", "data", "music_cache"]:
         Path(d).mkdir(parents=True, exist_ok=True)
 
     # Token'ları env variable'lardan oluştur (Railway için)
@@ -1221,6 +1363,20 @@ if __name__ == "__main__":
         print(f"  Zamanlayıcı: her gün {UPLOAD_TIME}")
     except Exception as e:
         print(f"  Zamanlayıcı başlatılamadı: {str(e)}")
+
+    # Gece üretim zamanlayıcısı (04:00, 05:00, 06:00)
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        import pytz
+        tz = pytz.timezone("Europe/Istanbul")
+        night_scheduler = BackgroundScheduler(timezone=tz)
+        night_scheduler.add_job(run_nightly_production, "cron", hour=4, minute=0, id="night_04")
+        night_scheduler.add_job(run_nightly_production, "cron", hour=5, minute=0, id="night_05")
+        night_scheduler.add_job(run_nightly_production, "cron", hour=6, minute=0, id="night_06")
+        night_scheduler.start()
+        print("  🌙 Gece zamanlayıcısı: 04:00, 05:00, 06:00")
+    except Exception as e:
+        print(f"  ⚠ Gece zamanlayıcısı kurulamadı: {e}")
 
     # Telegram Bot — 5s gecikmeyle başlat
     import threading as _thr

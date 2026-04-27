@@ -26,44 +26,44 @@ SCOPES = [
 
 
 def get_authenticated_service(channel: str = "sozler"):
-    """OAuth2 ile YouTube API istemcisi oluşturur."""
+    """OAuth2 ile YouTube API istemcisi oluşturur — kanal bazlı token."""
+    from google.oauth2.credentials import Credentials as GCreds
+
+    # Kanal bazlı dosyalar
+    token_file = OAUTH_TOKEN_FILE if channel == "sozler" else f"token_{channel}.json"
+    creds_file = OAUTH_CREDENTIALS_FILE if channel in ("sozler","notesofhistory") else f"credentials_{channel}.json"
+
     credentials = None
 
-    # Kanal bazlı token dosyası
-    token_file = f"token_{channel}.json" if channel != "sozler" else OAUTH_TOKEN_FILE
-    # notesofhistory ayrı credentials yok, ana credentials.json kullan
-    if channel in ("sozler", "notesofhistory"):
-        creds_file = OAUTH_CREDENTIALS_FILE
-    else:
-        creds_file = f"credentials_{channel}.json"
-
-    # Kayıtlı token varsa yükle
+    # 1. JSON token dene (Railway'de env variable'dan oluşturulan)
     if os.path.exists(token_file):
         try:
-            from google.oauth2.credentials import Credentials
-            credentials = Credentials.from_authorized_user_file(token_file)
+            credentials = GCreds.from_authorized_user_file(token_file)
         except:
             pass
 
-    if not credentials and os.path.exists(OAUTH_TOKEN_FILE):
-        with open(OAUTH_TOKEN_FILE, "rb") as f:
-            credentials = pickle.load(f)
+    # 2. Pickle token dene (eski format, sadece sozler için)
+    if not credentials and channel == "sozler" and os.path.exists(OAUTH_TOKEN_FILE):
+        try:
+            with open(OAUTH_TOKEN_FILE, "rb") as f:
+                credentials = pickle.load(f)
+        except:
+            pass
 
-    # Token geçersizse veya yoksa yenile / al
-    if not credentials or not credentials.valid:
-        if credentials and credentials.expired and credentials.refresh_token:
-            print("  → Token yenileniyor...")
+    # 3. Token geçersizse yenile
+    if credentials and credentials.expired and credentials.refresh_token:
+        try:
             credentials.refresh(Request())
-        else:
-            print("  → Tarayıcıda YouTube izni gerekiyor...")
-            flow = InstalledAppFlow.from_client_secrets_file(
-                creds_file, SCOPES
-            )
-            credentials = flow.run_local_server(port=0)
+            # Yenilenen token'ı DOĞRU dosyaya kaydet
+            with open(token_file, "w") as f:
+                f.write(credentials.to_json())
+            print(f"  ✅ Token yenilendi: {token_file}")
+        except Exception as e:
+            print(f"  ⚠ Token yenileme hatası: {e}")
+            credentials = None
 
-        with open(OAUTH_TOKEN_FILE, "wb") as f:
-            pickle.dump(credentials, f)
-        print("  ✅ Token kaydedildi.")
+    if not credentials or not credentials.valid:
+        raise Exception(f"Token geçersiz/eksik: {token_file}. Railway'de TOKEN_{channel.upper()} env variable'ı kontrol et.")
 
     return build("youtube", "v3", credentials=credentials)
 
