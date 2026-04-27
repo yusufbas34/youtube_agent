@@ -38,50 +38,98 @@ _pending_selection = {}  # {chat_id: [quote1, quote2, ...]}
 _pending_tarih_topics = {}
 
 
-def _generate_tarih_suggestions(chat_id: str):
-    """5 farklı tarih konusu önerisi üretir."""
-    send("🤔 5 konu önerisi hazırlanıyor...", chat_id)
+def _get_suggestions_prompt():
+    import json as _j, os as _o
+    used_list, yt_list = "yok", "yok"
     try:
-        import httpx, anthropic, json as _json, os as _os
-        from config import ANTHROPIC_API_KEY
-        from history_content_generator import load_used_topics, load_youtube_uploaded_topics
-
+        from history_content_generator import load_used_topics
         used = load_used_topics()
-        yt = load_youtube_uploaded_topics()
         used_list = ", ".join([t["topic"] for t in used[-30:]]) if used else "yok"
-        yt_list = ", ".join(yt[-20:]) if yt else "yok"
+    except: pass
+    try:
+        hist_path = "data/tarih_history.json"
+        if _o.path.exists(hist_path):
+            with open(hist_path,"r",encoding="utf-8") as f:
+                hist = _j.load(f)
+            yt_list = ", ".join([h.get("title","") for h in hist[-30:] if h.get("title")]) or "yok"
+    except: pass
+    prompt = "YouTube Shorts icin 5 farkli, ilginc ve az bilinen Turkce tarih konusu oner.\n"
+    prompt += "Her konu merak uyandiran, sasirtan olmali.\n\n"
+    prompt += "Daha once yuklenenler (BUNLARI ONERME): " + yt_list + "\n"
+    prompt += "Son kullanilanlar (BUNLARI ONERME): " + used_list + "\n\n"
+    prompt += 'SADECE JSON dondur:\n[{"konu":"baslik","aciklama":"1 cumle"},...]'
+    return prompt
 
+
+def _call_ai_for_suggestions(prompt):
+    import json as _j, os as _o, requests as _r
+    # Claude
+    try:
+        import httpx, anthropic
+        key = _o.environ.get("ANTHROPIC_API_KEY","")
+        if not key:
+            from config import ANTHROPIC_API_KEY; key = ANTHROPIC_API_KEY
         http = httpx.Client(verify=False)
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, http_client=http)
-        msg = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=800,
-            messages=[{"role":"user","content":f"""YouTube Shorts için 5 farklı, ilginç ve az bilinen Türkçe tarih konusu öner.
-Her konu bir Shorts videosu için uygun olmalı — merak uyandıran, şaşırtıcı.
-
-Daha önce yüklediklerim (KULLANMA): {yt_list}
-Son kullanılanlar (KULLANMA): {used_list}
-
-Sadece JSON döndür:
-[
-  {{"konu": "konu başlığı", "aciklama": "neden ilginç, 1 cümle"}},
-  ...
-]"""}]
-        )
+        client = anthropic.Anthropic(api_key=key, http_client=http)
+        msg = client.messages.create(model="claude-sonnet-4-5", max_tokens=800,
+            messages=[{"role":"user","content":prompt}])
         text = msg.content[0].text.strip()
         if "```json" in text: text = text.split("```json")[1].split("```")[0]
         elif "```" in text: text = text.split("```")[1].split("```")[0]
-        suggestions = _json.loads(text.strip())
-
-        _pending_tarih_topics[chat_id] = suggestions
-        lines = ["📋 <b>Konu seç (1-5):</b>\n"]
-        for i, s in enumerate(suggestions[:5], 1):
-            lines.append(f"{i}. 🏛 <b>{s['konu']}</b>\n   <i>{s['aciklama']}</i>")
-        lines.append("\n<i>Numara yaz veya /tarih konu başlığı ile özel konu gir</i>")
-        send("\n\n".join(lines) if len(lines) > 2 else "\n".join(lines), chat_id)
+        return _j.loads(text.strip())
     except Exception as e:
-        send(f"❌ Öneri üretilemedi: {str(e)[:100]}\n/tarih konuadı ile devam edebilirsin.", chat_id)
+        print(f"Claude suggestions: {e}")
+    # Gemini
+    try:
+        key = _o.environ.get("GEMINI_API_KEY","")
+        if not key:
+            from config import GEMINI_API_KEY; key = GEMINI_API_KEY
+        for model in ["gemini-2.0-flash","gemini-1.5-flash-latest"]:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            r = _r.post(url, json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"maxOutputTokens":800}},timeout=20,verify=False)
+            if r.status_code == 200:
+                text = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if "```json" in text: text = text.split("```json")[1].split("```")[0]
+                elif "```" in text: text = text.split("```")[1].split("```")[0]
+                return _j.loads(text.strip())
+    except Exception as e:
+        print(f"Gemini suggestions: {e}")
+    # Groq
+    try:
+        key = _o.environ.get("GROQ_API_KEY","")
+        if not key:
+            from config import GROQ_API_KEY; key = GROQ_API_KEY
+        r = _r.post("https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
+            json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":prompt}],"max_tokens":800},timeout=20,verify=False)
+        if r.status_code == 200:
+            text = r.json()["choices"][0]["message"]["content"].strip()
+            if "```json" in text: text = text.split("```json")[1].split("```")[0]
+            elif "```" in text: text = text.split("```")[1].split("```")[0]
+            return _j.loads(text.strip())
+    except Exception as e:
+        print(f"Groq suggestions: {e}")
+    raise Exception("Tum AI servisleri basarisiz")
+
+
+def _generate_tarih_suggestions(chat_id: str):
+    send("Konu onerileri hazirlaniyor...", chat_id)
+    try:
+        prompt = _get_suggestions_prompt()
+        suggestions = _call_ai_for_suggestions(prompt)
+        if not suggestions or not isinstance(suggestions, list):
+            raise Exception("Gecersiz format")
+        _pending_tarih_topics[chat_id] = suggestions[:5]
+        msg = "Tarih konusu sec (1-5):\n\n"
+        for i, s in enumerate(suggestions[:5], 1):
+            msg += f"{i}. {s.get('konu','?')}\n"
+            msg += f"   {s.get('aciklama','')}\n\n"
+        msg += "Numara yaz veya /tarih konu ile ozel konu gir"
+        send(msg, chat_id)
+    except Exception as e:
+        send(f"Oneri hatasi: {str(e)[:150]}", chat_id)
         _pending_tarih_topics.pop(chat_id, None)
+
 
 
 def cmd_tarih(chat_id: str, topic: str = None):

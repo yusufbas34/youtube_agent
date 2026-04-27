@@ -982,6 +982,77 @@ def api_channel_analytics(channel):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/tarih/suggestions")
+def api_tarih_suggestions():
+    """Her seferinde yeni 5 konu onerisi uretir, eskilerle kontrol eder."""
+    try:
+        import json as _j
+        used_list, yt_list = "yok", "yok"
+        try:
+            from history_content_generator import load_used_topics
+            used = load_used_topics()
+            used_list = ", ".join([t["topic"] for t in used[-30:]]) if used else "yok"
+        except: pass
+        try:
+            hist = load_json("data/tarih_history.json", [])
+            yt_list = ", ".join([h.get("title","") for h in hist[-30:] if h.get("title")]) or "yok"
+        except: pass
+
+        prompt = f"""YouTube Shorts icin 5 farkli, ilginc ve az bilinen Turkce tarih konusu oner.
+Her konu merak uyandiran, sasirtan olmali. Kisa ama carpici aciklama ekle.
+
+Daha once yuklenenler (BUNLARI ONERME): {yt_list}
+Son kullanilanlar (BUNLARI ONERME): {used_list}
+
+SADECE JSON dondur:
+[
+  {{"konu":"konu basligi","aciklama":"neden ilginc - 1 kisa cumle"}},
+  {{"konu":"konu basligi","aciklama":"neden ilginc - 1 kisa cumle"}},
+  {{"konu":"konu basligi","aciklama":"neden ilginc - 1 kisa cumle"}},
+  {{"konu":"konu basligi","aciklama":"neden ilginc - 1 kisa cumle"}},
+  {{"konu":"konu basligi","aciklama":"neden ilginc - 1 kisa cumle"}}
+]"""
+
+        suggestions = None
+
+        # Claude
+        try:
+            import httpx, anthropic
+            http_client = httpx.Client(verify=False)
+            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, http_client=http_client)
+            msg = client.messages.create(model="claude-sonnet-4-5", max_tokens=800,
+                messages=[{"role":"user","content":prompt}])
+            text = msg.content[0].text.strip()
+            if "```json" in text: text = text.split("```json")[1].split("```")[0]
+            elif "```" in text: text = text.split("```")[1].split("```")[0]
+            suggestions = _j.loads(text.strip())
+        except Exception as e:
+            print(f"  Claude suggestions: {e}")
+
+        # Gemini fallback
+        if not suggestions:
+            try:
+                import requests as _r
+                for model in ["gemini-2.0-flash","gemini-1.5-flash-latest"]:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+                    r = _r.post(url, json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"maxOutputTokens":800}},timeout=20,verify=False)
+                    if r.status_code == 200:
+                        text = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                        if "```json" in text: text = text.split("```json")[1].split("```")[0]
+                        elif "```" in text: text = text.split("```")[1].split("```")[0]
+                        suggestions = _j.loads(text.strip())
+                        break
+            except Exception as e:
+                print(f"  Gemini suggestions: {e}")
+
+        if not suggestions:
+            return jsonify({"ok": False, "error": "AI servisi yanit vermedi"}), 500
+
+        return jsonify({"ok": True, "suggestions": suggestions[:5]})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/tarih/local-videos")
 def api_tarih_local_videos():
     uploaded_set = set(get_uploaded_paths("tarih"))
@@ -1199,11 +1270,10 @@ def api_viral_produce():
 
 @app.route("/api/viral/local-videos")
 def api_viral_local_videos():
-    uploaded = get_uploaded_paths("viral")
-    queued   = get_queued_paths("viral")
-    videos   = []
+    uploaded_set = set(get_uploaded_paths("viral"))
+    hist_map = {h.get("video_path",""):h for h in load_json("data/viral_history.json",[])}
+    videos = []
     for f in sorted(glob.glob("output/viral/viral_*.mp4"), reverse=True):
-        if f in uploaded or f in queued: continue
         size_mb = round(os.path.getsize(f)/(1024*1024),1)
         basename = os.path.basename(f)
         meta = {}
@@ -1212,10 +1282,16 @@ def api_viral_local_videos():
             try:
                 with open(mp,"r",encoding="utf-8") as mf: meta=json.load(mf)
             except: pass
-        videos.append({"path":f,"filename":basename,"size_mb":size_mb,
-                       "url":f"/output/viral/{basename}",
-                       "title":meta.get("title",""),
-                       "source":meta.get("source","")})
+        h = hist_map.get(f,{})
+        videos.append({
+            "path":f,"filename":basename,"size_mb":size_mb,
+            "url":f"/output/viral/{basename}",
+            "title":meta.get("title",""),
+            "source":meta.get("source",""),
+            "generated_at":meta.get("generated_at",""),
+            "uploaded": f in uploaded_set,
+            "video_url": h.get("url"),
+        })
     return jsonify({"ok":True,"videos":videos})
 
 @app.route("/output/viral/<path:filename>")

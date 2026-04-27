@@ -369,17 +369,12 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
       </div>
 
       <!-- Konu önerileri -->
-      <div class="sec">Hızlı Konu Önerileri</div>
-      <div class="topic-grid" id="topic_suggestions">
-        <div class="topic-chip" onclick="setTopic(this)">⚔️ Osmanlı Savaşları</div>
-        <div class="topic-chip" onclick="setTopic(this)">🏛️ Roma İmparatorluğu</div>
-        <div class="topic-chip" onclick="setTopic(this)">🗺️ Keşifler Çağı</div>
-        <div class="topic-chip" onclick="setTopic(this)">⚡ WW2 Gizli Operasyonlar</div>
-        <div class="topic-chip" onclick="setTopic(this)">🔬 Bilim Tarihi</div>
-        <div class="topic-chip" onclick="setTopic(this)">👑 Büyük İskender</div>
-        <div class="topic-chip" onclick="setTopic(this)">🌍 Sömürgecilik</div>
-        <div class="topic-chip" onclick="setTopic(this)">🚀 Soğuk Savaş</div>
-        <div class="topic-chip" onclick="setTopic(this)">⚗️ Ortaçağ Simyası</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="sec" style="margin:0">AI Konu Önerileri</div>
+        <button class="btn btn-ghost" style="font-size:12px" id="btn_suggestions" onclick="loadSuggestions()">🔄 Yenile</button>
+      </div>
+      <div id="topic_suggestions" class="topic-grid">
+        <div class="topic-chip" style="color:var(--muted);cursor:default" colspan="3">Yükleniyor...</div>
       </div>
 
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
@@ -708,6 +703,35 @@ function setFmt(f,btn){
   document.querySelectorAll('[id^="fmt_"]').forEach(function(b){b.classList.remove('active');});
   btn.classList.add('active');
 }
+async function loadSuggestions(){
+  if(!IS_SRV) return;
+  var btn=document.getElementById('btn_suggestions');
+  var grid=document.getElementById('topic_suggestions');
+  if(btn) btn.disabled=true;
+  grid.innerHTML='<div class="topic-chip" style="color:var(--muted);cursor:default">AI düşünüyor...</div>';
+  try{
+    var r=await fetch('/api/tarih/suggestions');
+    var d=await r.json();
+    if(d.ok&&d.suggestions){
+      grid.innerHTML=d.suggestions.map(function(s){
+        return '<div class="topic-chip" onclick="setTopicText(this)" data-topic="'+s.konu+'" title="'+s.aciklama+'">'+
+          '<div style="font-weight:600;font-size:12px">'+s.konu+'</div>'+
+          '<div style="font-size:11px;color:var(--muted2);margin-top:3px">'+s.aciklama+'</div>'+
+          '</div>';
+      }).join('');
+    } else {
+      grid.innerHTML='<div class="topic-chip" style="color:var(--viral2)">Hata: '+( d.error||'?')+'</div>';
+    }
+  }catch(e){
+    grid.innerHTML='<div class="topic-chip" style="color:var(--muted)">Sunucu bekleniyor...</div>';
+  }
+  if(btn) btn.disabled=false;
+}
+
+function setTopicText(el){
+  document.getElementById('tarih_topic').value=el.getAttribute('data-topic')||'';
+}
+
 function setTopic(el){
   document.getElementById('tarih_topic').value=el.textContent.replace(/^[^\w\sğüşıöçĞÜŞİÖÇ]+/,'').trim();
 }
@@ -1062,6 +1086,7 @@ if(IS_SRV){
 // ── İlk Render ────────────────────────────────────────────────────
 RQ(); RPQ();
 loadSozlerAnaliz();
+if(IS_SRV) loadSuggestions();
 </script>
 </body>
 </html>
