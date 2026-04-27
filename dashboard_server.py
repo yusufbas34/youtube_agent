@@ -1015,11 +1015,23 @@ SADECE JSON dondur:
 
         suggestions = None
 
+        # API key'leri al
+        _ant_key = os.environ.get("ANTHROPIC_API_KEY","")
+        _gem_key = os.environ.get("GEMINI_API_KEY","")
+        if not _ant_key:
+            try:
+                from config import ANTHROPIC_API_KEY as _ak; _ant_key = _ak
+            except: pass
+        if not _gem_key:
+            try:
+                from config import GEMINI_API_KEY as _gk; _gem_key = _gk
+            except: pass
+
         # Claude
         try:
             import httpx, anthropic
             http_client = httpx.Client(verify=False)
-            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, http_client=http_client)
+            client = anthropic.Anthropic(api_key=_ant_key, http_client=http_client)
             msg = client.messages.create(model="claude-sonnet-4-5", max_tokens=800,
                 messages=[{"role":"user","content":prompt}])
             text = msg.content[0].text.strip()
@@ -1034,7 +1046,7 @@ SADECE JSON dondur:
             try:
                 import requests as _r
                 for model in ["gemini-2.0-flash","gemini-1.5-flash-latest"]:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_API_KEY}"
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={_gem_key}"
                     r = _r.post(url, json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"maxOutputTokens":800}},timeout=20,verify=False)
                     if r.status_code == 200:
                         text = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
