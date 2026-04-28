@@ -391,21 +391,22 @@ def make_title_thumbnail(title: str, accent_hex: str = "#d97706") -> np.ndarray:
 
     draw = ImageDraw.Draw(bg)
 
-    # Baslik temizle - sadece harf, bosluk ve noktalama
+    # Baslik temizle
     import re as _re
     clean_title = _re.sub(r"[^\w\s\-\:\.\!\?\,]", "", title, flags=_re.UNICODE).strip()
     if not clean_title:
         clean_title = title[:60]
 
-    # Daha buyuk, dikkat cekici font boyutu
-    fs = 88 if len(clean_title) < 25 else 76 if len(clean_title) < 40 else 64 if len(clean_title) < 55 else 56
+    # Font boyutu — cok buyuk yaz ki dikkat ceksin
+    fs = 96 if len(clean_title) < 20 else 82 if len(clean_title) < 35 else 68 if len(clean_title) < 50 else 58
     tf = get_font(fs)
 
+    # Kelime wrap — daire genisligine gore (W-120)
     words = clean_title.split()
     lines, cur = [], ""
     for w in words:
         test = (cur + " " + w).strip()
-        if draw.textbbox((0,0), test, font=tf)[2] > W-80 and cur:
+        if draw.textbbox((0,0), test, font=tf)[2] > W-120 and cur:
             lines.append(cur)
             cur = w
         else:
@@ -413,23 +414,26 @@ def make_title_thumbnail(title: str, accent_hex: str = "#d97706") -> np.ndarray:
     if cur:
         lines.append(cur)
 
-    lh = int(fs * 1.4)
+    lh = int(fs * 1.35)
     total_h = len(lines) * lh
-    # Tam ortala
-    ty = (H - total_h) // 2
+    # tarihtmblr.png'de dairenin merkezi gorsel yuksekliginin %42'sinde
+    # Yaziyi dairenin icine ortala
+    center_y = int(H * 0.42)
+    ty = center_y - total_h // 2
 
     for line in lines:
         bb = draw.textbbox((0,0), line, font=tf)
         lw2 = bb[2]
         x = (W - lw2) // 2
-        # Kalin koyu golge — derinlik hissi
-        for ox, oy in [(-5,-5),(5,-5),(-5,5),(5,5),(0,-6),(0,6),(-6,0),(6,0),
-                       (-3,-3),(3,-3),(-3,3),(3,3)]:
-            draw.text((x+ox, ty+oy), line, font=tf, fill=(10,5,0,255))
-        # Altin/krem ana renk
-        draw.text((x, ty), line, font=tf, fill=(255,245,190,255))
-        # Parlak vurgu — 1px yukari
-        draw.text((x, ty-1), line, font=tf, fill=(255,255,220,180))
+        # Kalin siyah dis golge — okunabilirligi arttirir
+        for ox, oy in [(-6,-6),(6,-6),(-6,6),(6,6),(0,-8),(0,8),(-8,0),(8,0),
+                       (-4,-4),(4,-4),(-4,4),(4,4)]:
+            draw.text((x+ox, ty+oy), line, font=tf, fill=(5,3,0,255))
+        # Kahverengi/siyah ic golge
+        for ox, oy in [(-2,-2),(2,-2),(-2,2),(2,2)]:
+            draw.text((x+ox, ty+oy), line, font=tf, fill=(40,20,5,255))
+        # Altin sari ana yazi — parlak ve goz alici
+        draw.text((x, ty), line, font=tf, fill=(255,220,80,255))
         ty += lh
 
     return np.array(bg)

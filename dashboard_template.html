@@ -811,20 +811,36 @@ async function uploadTarihV(btn){
   if(d.ok){alert('Yükleme başladı!');loadTarihVideos();}else alert('Hata: '+d.error);
 }
 
-function loadSozlerVideos(){
+async function loadSozlerVideos(){
   if(!IS_SRV) return;
-  fetch('/api/local-videos').then(function(r){return r.json();}).then(function(d){
-    if(!d.ok||!d.videos.length){document.getElementById('s_vtb').innerHTML='<tr><td colspan="6" class="empty">Henüz video yok</td></tr>';return;}
-    var vs=(PERF&&PERF.video_stats)||{};
-    document.getElementById('s_vtb').innerHTML=d.videos.map(function(v,i){
-      var s=vs[v.video_id||'']||{};
+  try{
+    // YouTube canlı istatistikleri
+    var ar = await fetch('/api/analytics/sozler');
+    var ad = await ar.json();
+    var statsMap = (ad.ok && ad.stats) ? ad.stats : {};
+    if(ad.ok && ad.total){
+      document.getElementById('s_tv').textContent = ad.total.videos;
+      document.getElementById('s_tw').textContent = fmt(ad.total.views);
+      document.getElementById('s_tl').textContent = fmt(ad.total.likes);
+      var te = ad.total.views>0 ? ((ad.total.likes+ad.total.comments)/ad.total.views*100).toFixed(1) : 0;
+      document.getElementById('s_te').textContent = '%'+te;
+    }
+    // Video listesi
+    var hist = D.upload || [];
+    if(!hist.length){
+      document.getElementById('s_vtb').innerHTML='<tr><td colspan="6" class="empty">Henüz video yok</td></tr>';
+      return;
+    }
+    document.getElementById('s_vtb').innerHTML = hist.map(function(v,i){
+      var s = statsMap[v.video_id||''] || {};
       return '<tr><td style="color:var(--muted)">'+(i+1)+'</td>'+
-        '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(v.title||v.filename)+'</td>'+
-        '<td style="color:var(--muted2)">'+fmtD(v.generated_at)+'</td>'+
-        '<td>'+fmt(s.views)+'</td><td style="color:var(--sozler2)">'+fmt(s.likes)+'</td>'+
+        '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(s.title||v.title||'-')+'</td>'+
+        '<td style="color:var(--muted2)">'+fmtD(v.uploaded_at)+'</td>'+
+        '<td style="font-weight:600">'+fmt(s.views)+'</td>'+
+        '<td style="color:var(--sozler2)">'+fmt(s.likes)+'</td>'+
         '<td>'+(v.url?'<a href="'+v.url+'" target="_blank" style="color:var(--notes2)">İzle</a>':'-')+'</td></tr>';
     }).join('');
-  });
+  }catch(e){ console.log('sozler videos err:',e); }
 }
 
 function loadNotesVideos(){

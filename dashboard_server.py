@@ -1310,14 +1310,90 @@ def api_viral_local_videos():
 def serve_viral_output(filename):
     return send_from_directory("output/viral", filename)
 
-def run_nightly_production():
-    """Gece 04, 05, 06'da her kanal için video üretir (saat 08:00'de yayınlanmak üzere)."""
-    import threading as _thr
-    log_msg = f"[{datetime.now().strftime('%H:%M')}] Gece üretimi başladı"
-    print(log_msg)
-    send_telegram(f"🌙 Gece otomatik üretim başladı ({datetime.now().strftime('%H:%M')})")
+NIGHTLY_SLOTS = {
+    1: ("sozler", None,  8),
+    2: ("sozler", None, 12),
+    3: ("sozler", None, 20),
+    4: ("tarih",  "tarihtebugün",    9),
+    5: ("tarih",  "gizemliolaylar", 15),
+    6: ("tarih",  "unluliderlere",  19),
+    11: ("viral", None,  8),
+    12: ("viral", None, 12),
+    13: ("viral", None, 20),
+}
 
-    def produce_sozler():
+NIGHTLY_TOPICS = {
+    "tarihtebugün": {
+        "prompt_hint": "Tarihin bu gunu: ilginc, az bilinen tarihi bir olay. Kisa, carpici.",
+        "format": "simple",
+    },
+    "gizemliolaylar": {
+        "prompt_hint": "Tarihin cozulemeyen gizemli sirlarindan biri. Merak uyandiran.",
+        "format": "illustrated",
+    },
+    "unluliderlere": {
+        "prompt_hint": "Unlu bir tarihi liderin hic bilinmeyen sasirtici bir yonu. Insan boyutunu on plana cikar.",
+        "format": "illustrated",
+    },
+}
+
+
+def run_nightly_production(slot_hour=None):
+    import threading as _thr
+    now_hour = slot_hour if slot_hour is not None else datetime.now().hour
+    slot = NIGHTLY_SLOTS.get(now_hour)
+    if not slot:
+        print("slot tanimlanmamis: %d" % now_hour)
+        return
+    channel, topic_type, publish_hour = slot
+    topic_info = NIGHTLY_TOPICS.get(topic_type, {})
+    send_telegram("Gece uretim (%02d:00) -> %02d:00 yayinlanacak" % (now_hour, publish_hour))
+
+    def produce_tarih_slot():
+        try:
+            from history_content_generator import generate_history_content
+            from history_video_generator import create_history_video
+            from uploader import run_upload
+            from channel_config import TARIH_CHANNEL_ID, CHANNELS
+            fmt = topic_info.get("format", "timeline")
+            hint = topic_info.get("prompt_hint", "")
+            content = generate_history_content(topic=hint, format_type=fmt)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            out = "output/tarih/tarih_%s.mp4" % ts
+            Path("output/tarih").mkdir(parents=True, exist_ok=True)
+            create_history_video(content, out, channel="tarih")
+            meta = load_json(out.replace(".mp4",".json"), {})
+            sched = safe_sched(publish_hour)
+            cp = {"title": meta.get("title", content["title"])[:90],
+                  "description": meta.get("description",""),
+                  "tags": meta.get("tags",[]), "hashtags": meta.get("hashtags",[])}
+            result = run_upload(cp, out, scheduled_time=sched, channel_id=TARIH_CHANNEL_ID, channel="tarih")
+            add_to_history("tarih", out, result.get("video_id",""), result["url"], cp["title"])
+            send_telegram("Tarih %02d:00 -> %s" % (publish_hour, result["url"]))
+            try:
+                from english_history_content_generator import generate_english_history_content
+                en = generate_english_history_content(turkish_content=content)
+                if en:
+                    ts2 = datetime.now().strftime("%Y%m%d_%H%M%S") + "_en"
+                    out2 = "output/notesofhistory/notes_%s.mp4" % ts2
+                    Path("output/notesofhistory").mkdir(parents=True, exist_ok=True)
+                    create_history_video(en, out2, channel="notesofhistory")
+                    meta2 = load_json(out2.replace(".mp4",".json"), {})
+                    ch_id2 = CHANNELS.get("notesofhistory",{}).get("channel_id","")
+                    if os.path.exists("token_notesofhistory.json") and ch_id2:
+                        cp2 = {"title": meta2.get("title", en["title"])[:90],
+                               "description": meta2.get("description",""),
+                               "tags": meta2.get("tags",[]), "hashtags": meta2.get("hashtags",[])}
+                        r2 = run_upload(cp2, out2, scheduled_time=sched, channel_id=ch_id2, channel="notesofhistory")
+                        add_to_history("notesofhistory", out2, r2.get("video_id",""), r2["url"], cp2["title"])
+                        send_telegram("Notes %02d:00 -> %s" % (publish_hour, r2["url"]))
+            except Exception as ne:
+                send_telegram("Notes hatasi: %s" % str(ne)[:150])
+        except Exception as e:
+            send_telegram("Gece Tarih hatasi: %s" % str(e)[:150])
+            import traceback; traceback.print_exc()
+
+    def produce_sozler_slot():
         try:
             from quotes_manager import get_next_quote, mark_quote_used
             from quote_video_generator import create_quote_video
@@ -1325,68 +1401,26 @@ def run_nightly_production():
             from channel_config import SOZLER_CHANNEL_ID
             quote = get_next_quote()
             if not quote:
-                print("  ⚠ Sözler: kullanılabilir söz yok")
+                send_telegram("Sozler: kota yok")
                 return
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            out = f"output/sozler/quote_{ts}.mp4"
+            out = "output/sozler/quote_%s.mp4" % ts
             Path("output/sozler").mkdir(parents=True, exist_ok=True)
             create_quote_video(quote, out)
-            meta = {"title":(quote.get("text","")[:85]+" — "+quote.get("author","Anonim")),
-                    "description":quote.get("text","")+"\n\n#motivasyon #shorts",
-                    "tags":["motivasyon","ozlusoz","shorts"],"hashtags":["#motivasyon","#shorts"]}
-            sched = safe_sched(8)
+            desc = quote.get("text","") + "\n\n#motivasyon #shorts"
+            meta = {"title": quote.get("text","")[:85] + " - " + quote.get("author","Anonim"),
+                    "description": desc,
+                    "tags": ["motivasyon","ozlusoz","shorts"],
+                    "hashtags": ["#motivasyon","#shorts"]}
+            sched = safe_sched(publish_hour)
             result = run_upload(meta, out, scheduled_time=sched, channel_id=SOZLER_CHANNEL_ID, channel="sozler")
             mark_quote_used(quote["id"], result["url"])
             add_to_history("sozler", out, result.get("video_id",""), result["url"], meta["title"])
-            send_telegram(f"✅ Gece Sözler yüklendi (08:00)\n📝 {quote.get('text','')[:60]}\n🔗 {result['url']}")
+            send_telegram("Sozler %02d:00 -> %s" % (publish_hour, result["url"]))
         except Exception as e:
-            send_telegram(f"❌ Gece Sözler hatası: {str(e)[:150]}")
-            print(f"  ⚠ Gece sözler: {e}")
+            send_telegram("Gece Sozler hatasi: %s" % str(e)[:150])
 
-    def produce_tarih():
-        try:
-            from history_content_generator import generate_history_content, get_best_format
-            from history_video_generator import create_history_video
-            from uploader import run_upload
-            from channel_config import TARIH_CHANNEL_ID, CHANNELS
-            analytics = load_json("data/tarih_analytics.json", {})
-            fmt = get_best_format(analytics)
-            content = generate_history_content(format_type=fmt)
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            out = f"output/tarih/tarih_{ts}.mp4"
-            Path("output/tarih").mkdir(parents=True, exist_ok=True)
-            create_history_video(content, out, channel="tarih")
-            meta = load_json(out.replace(".mp4",".json"), {})
-            sched = safe_sched(8)
-            result = run_upload({"title":meta.get("title",content["title"])[:90],
-                "description":meta.get("description",""),"tags":meta.get("tags",[]),"hashtags":meta.get("hashtags",[])},
-                out, scheduled_time=sched, channel_id=TARIH_CHANNEL_ID, channel="tarih")
-            add_to_history("tarih", out, result.get("video_id",""), result["url"], meta.get("title",""))
-            send_telegram(f"✅ Gece Tarih yüklendi (08:00)\n🏛 {content['title'][:60]}\n🔗 {result['url']}")
-            # Notes of History
-            try:
-                from english_history_content_generator import generate_english_history_content
-                en = generate_english_history_content(turkish_content=content)
-                if en:
-                    ts2 = datetime.now().strftime("%Y%m%d_%H%M%S")+"_en"
-                    out2 = f"output/notesofhistory/notes_{ts2}.mp4"
-                    Path("output/notesofhistory").mkdir(parents=True, exist_ok=True)
-                    create_history_video(en, out2, channel="notesofhistory")
-                    meta2 = load_json(out2.replace(".mp4",".json"), {})
-                    ch_id2 = CHANNELS.get("notesofhistory",{}).get("channel_id","")
-                    if os.path.exists("token_notesofhistory.json") and ch_id2:
-                        r2 = run_upload({"title":meta2.get("title",en["title"])[:90],
-                            "description":meta2.get("description",""),"tags":meta2.get("tags",[]),"hashtags":meta2.get("hashtags",[])},
-                            out2, scheduled_time=sched, channel_id=ch_id2, channel="notesofhistory")
-                        add_to_history("notesofhistory", out2, r2.get("video_id",""), r2["url"], meta2.get("title",""))
-                        send_telegram(f"✅ Gece Notes yüklendi (08:00)\n📖 {en['title'][:60]}\n🔗 {r2['url']}")
-            except Exception as ne:
-                send_telegram(f"❌ Gece Notes hatası: {str(ne)[:150]}")
-        except Exception as e:
-            send_telegram(f"❌ Gece Tarih hatası: {str(e)[:150]}")
-            print(f"  ⚠ Gece tarih: {e}")
-
-    def produce_viral():
+    def produce_viral_slot():
         try:
             from viral_scraper import check_new_tweets, add_to_viral_queue, load_queue
             from viral_video_generator import create_viral_video
@@ -1397,29 +1431,29 @@ def run_nightly_production():
             queue = load_queue()
             pending = [q for q in queue if q.get("status")=="bekliyor"]
             if not pending:
-                print("  ⚠ Viral: bekleyen tweet yok")
+                send_telegram("Viral: bekleyen icerik yok")
                 return
             item = pending[0]
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            out = f"output/viral/viral_{ts}.mp4"
+            out = "output/viral/viral_%s.mp4" % ts
             Path("output/viral").mkdir(parents=True, exist_ok=True)
             vpath = create_viral_video(item, out)
             if not vpath: return
             meta = load_json(vpath.replace(".mp4",".json"), {})
-            sched = safe_sched(8)
-            result = run_upload({"title":meta.get("title",item["text"][:90]),
-                "description":meta.get("description","#viral #shorts"),"tags":meta.get("tags",["viral"]),"hashtags":meta.get("hashtags",["#viral"])},
+            sched = safe_sched(publish_hour)
+            result = run_upload({"title": meta.get("title", item["text"][:90]),
+                "description": meta.get("description","#viral #shorts"),
+                "tags": meta.get("tags",["viral"]),
+                "hashtags": meta.get("hashtags",["#viral"])},
                 vpath, scheduled_time=sched, channel_id=VIRAL_CHANNEL_ID, channel="viral")
             add_to_history("viral", vpath, result.get("video_id",""), result["url"], meta.get("title",""))
-            send_telegram(f"✅ Gece Viral yüklendi (08:00)\n📱 {item['text'][:60]}\n🔗 {result['url']}")
+            send_telegram("Viral %02d:00 -> %s" % (publish_hour, result["url"]))
         except Exception as e:
-            send_telegram(f"❌ Gece Viral hatası: {str(e)[:150]}")
-            print(f"  ⚠ Gece viral: {e}")
+            send_telegram("Gece Viral hatasi: %s" % str(e)[:150])
 
-    _thr.Thread(target=produce_sozler, daemon=True).start()
-    import time as _t; _t.sleep(30)
-    _thr.Thread(target=produce_tarih, daemon=True).start()
-    _thr.Thread(target=produce_viral, daemon=True).start()
+    fn = {"tarih": produce_tarih_slot, "sozler": produce_sozler_slot, "viral": produce_viral_slot}.get(channel)
+    if fn:
+        _thr.Thread(target=fn, daemon=True).start()
 
 
 if __name__ == "__main__":
@@ -1458,10 +1492,17 @@ if __name__ == "__main__":
         import pytz
         tz = pytz.timezone("Europe/Istanbul")
         night_scheduler = BackgroundScheduler(timezone=tz)
-        night_scheduler.add_job(run_nightly_production, "cron", hour=4, minute=0, id="night_04")
-        night_scheduler.add_job(run_nightly_production, "cron", hour=5, minute=0, id="night_05")
-        night_scheduler.add_job(run_nightly_production, "cron", hour=6, minute=0, id="night_06")
+        night_scheduler.add_job(lambda: run_nightly_production(1),  "cron", hour=1,  minute=0, id="night_01")
+        night_scheduler.add_job(lambda: run_nightly_production(2),  "cron", hour=2,  minute=0, id="night_02")
+        night_scheduler.add_job(lambda: run_nightly_production(3),  "cron", hour=3,  minute=0, id="night_03")
+        night_scheduler.add_job(lambda: run_nightly_production(4),  "cron", hour=4,  minute=0, id="night_04")
+        night_scheduler.add_job(lambda: run_nightly_production(5),  "cron", hour=5,  minute=0, id="night_05")
+        night_scheduler.add_job(lambda: run_nightly_production(6),  "cron", hour=6,  minute=0, id="night_06")
+        night_scheduler.add_job(lambda: run_nightly_production(11), "cron", hour=1, minute=30, id="night_11")
+        night_scheduler.add_job(lambda: run_nightly_production(12), "cron", hour=2, minute=30, id="night_12")
+        night_scheduler.add_job(lambda: run_nightly_production(13), "cron", hour=3, minute=30, id="night_13")
         night_scheduler.start()
+        print("  Sozler: 01:00(8), 02:00(12), 03:00(20) | Viral: 01:30(8), 02:30(12), 03:30(20) | Tarih: 04:00(9), 05:00(15), 06:00(19)")
         print("  🌙 Gece zamanlayıcısı: 04:00, 05:00, 06:00")
     except Exception as e:
         print(f"  ⚠ Gece zamanlayıcısı kurulamadı: {e}")
