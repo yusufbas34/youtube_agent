@@ -23,7 +23,7 @@ OUTPUT_DIR = Path("output/tarih")
 
 # Notes of History sabitleri
 NOTES_OUTPUT_DIR     = Path("output/notesofhistory")
-NOTES_VOICE_ID       = "G7ILShrCNLfmS0A37SXS"
+NOTES_VOICE_ID       = "1GCQiLWWVadqyDYY3CK9"
 NOTES_OUTRO_PATH_WIN = "notesofhistory.png"
 NOTES_OUTRO_PATH_LIN = "/app/notesofhistory.png"
 
@@ -338,15 +338,15 @@ def generate_tts(text, path, channel="tarih"):
             raise ValueError("API key yok")
         import httpx
         from elevenlabs import ElevenLabs, save
-        voice_id = NOTES_VOICE_ID if channel == "notesofhistory" else "NfwyWIJnRR1RrYnStGUG"
+        voice_id = NOTES_VOICE_ID if channel == "notesofhistory" else "K72v6nhNPFHUbP76lOVL"
         http_client = httpx.Client(verify=False)
         client = ElevenLabs(api_key=ELEVENLABS_API_KEY, httpx_client=http_client)
         audio = client.text_to_speech.convert(
             text=text,
             voice_id=voice_id,
             model_id="eleven_multilingual_v2",
-            voice_settings={"stability": 0.45, "similarity_boost": 0.80,
-                           "style": 0.50, "use_speaker_boost": True},
+            voice_settings={"stability": 0.72, "similarity_boost": 0.85,
+                           "style": 0.30, "use_speaker_boost": True},
         )
         save(audio, path)
         print(f"    ElevenLabs TTS ({channel}): {os.path.basename(path)}")
