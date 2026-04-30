@@ -418,7 +418,7 @@ def make_title_thumbnail(title: str, accent_hex: str = "#d97706") -> np.ndarray:
     total_h = len(lines) * lh
     # tarihtmblr.png'de dairenin merkezi gorsel yuksekliginin %42'sinde
     # Yaziyi dairenin icine ortala
-    center_y = int(H * 0.42)
+    center_y = int(H * 0.47)  # Dairenin merkezi — tarihtmblr.png için kalibre edildi
     ty = center_y - total_h // 2
 
     for line in lines:
