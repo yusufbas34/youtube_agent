@@ -110,9 +110,10 @@ Sadece JSON döndür (başka hiçbir şey yazma):
     {{"time": "8-20s", "text": "Ana içerik",    "narration": "TTS metni", "visual": "görsel açıklaması"}},
     {{"time": "20-30s","text": "Detay/gelişme", "narration": "TTS metni", "visual": "görsel açıklaması"}},
     {{"time": "30-45s","text": "Sonuç/etki",    "narration": "TTS metni", "visual": "görsel açıklaması"}},
-    {{"time": "45-60s","text": "İlginç detay",  "narration": "TTS metni", "visual": "görsel açıklaması"}}
+    {{"time": "45-55s","text": "İlginç detay",  "narration": "TTS metni", "visual": "görsel açıklaması"}},
+    {{"time": "55-60s","text": "İzleyiciye soru", "narration": "Konuyla ilgili merak uyandıran bir soru sor: Siz ne düşünüyorsunuz? Yorumlarda paylaşın!", "visual": "kamera yakın plan"}}
   ],
-  "full_narration": "Tam anlatım metni (TTS için, 130-160 kelime, yaklaşık 55-60 saniye)",
+  "full_narration": "Tam anlatım metni (TTS için, 130-160 kelime). Son cümle mutlaka izleyiciye yönelik bir soru olmalı — örn: Siz bu konuda ne düşünüyorsunuz? Yorumlarda buluşalım!",
   "description": "YouTube açıklaması (200-300 karakter)",
   "tags": ["tarih", "shorts", "ilginç"],
   "hashtags": ["#tarih", "#shorts", "#ilginçbilgiler"],
