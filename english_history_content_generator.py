@@ -160,9 +160,10 @@ Return ONLY JSON:
     {{"time": "8-20s", "text": "Main content", "narration": "TTS text", "visual": "visual description"}},
     {{"time": "20-30s","text": "Details", "narration": "TTS text", "visual": "visual description"}},
     {{"time": "30-45s","text": "Result/impact", "narration": "TTS text", "visual": "visual description"}},
-    {{"time": "45-60s","text": "Interesting fact", "narration": "TTS text", "visual": "visual description"}}
+    {{"time": "45-55s","text": "Interesting fact", "narration": "TTS text", "visual": "visual description"}},
+    {{"time": "55-60s","text": "Question for viewers", "narration": "Ask a thought-provoking question related to the topic: What do you think? Let me know in the comments!", "visual": "close up camera"}}
   ],
-  "full_narration": "Full narration text for TTS (150-220 words)",
+  "full_narration": "Full narration text for TTS (130-160 words). The last sentence MUST be a question directed at viewers — e.g.: What do you think about this? Let me know in the comments below!",
   "description": "YouTube description (200-300 chars)",
   "tags": ["history","shorts","historyfacts","notesofhistory"],
   "hashtags": ["#history","#shorts","#historyfacts","#notesofhistory"],
