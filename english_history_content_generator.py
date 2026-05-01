@@ -25,7 +25,9 @@ Turkish content:
 
 Return ONLY a JSON object with the same structure but all text fields translated to English.
 Keep all non-text fields (colors, format, etc.) unchanged.
-Make the title catchy and SEO-friendly for English YouTube.
+Make the title catchy and SEO-friendly for US YouTube audience.
+The last segment narration MUST end with a viewer engagement question like "What do you think? Drop it in the comments!"
+Add a "us_trending_hashtags" field with these US-trending tags: ["#HistoryShorts","#DidYouKnow","#HistoryFacts","#LearnOnTikTok","#HistoryTok","#AmazingFacts","#MindBlown","#TodayILearned","#HistoryBuff","#ShortsHistory"]
 For segments, translate both "text" and "narration" fields.
 For tags/hashtags, use English equivalents."""
 

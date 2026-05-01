@@ -56,6 +56,37 @@ def hex_to_rgb(h):
 
 # ── Görsel Çekici ─────────────────────────────────────────────────
 
+def pick_ai_video_clip(visual_desc: str, topic: str, period: str,
+                       seg_idx: int = 0, total: int = 6,
+                       duration: float = 7.0) -> "np.ndarray | None":
+    """Seedance 2.0 ile AI video klibi uret. Basarisiz olursa None doner."""
+    try:
+        from ai_video_generator import is_seedance_available, generate_segment_video, build_history_prompt
+        if not is_seedance_available():
+            return None
+        prompt = build_history_prompt(visual_desc, topic, period, seg_idx, total)
+        out = str(TMP_DIR / f"ai_{seg_idx}_{int(time.time())}.mp4")
+        clip_path = generate_segment_video(
+            prompt=prompt, duration=5,
+            aspect_ratio="9:16", output_path=out
+        )
+        if not clip_path or not os.path.exists(clip_path):
+            return None
+        # VideoFileClip olarak yukle ve frame'e cevir
+        from moviepy.editor import VideoFileClip as _VFC
+        vc = _VFC(clip_path)
+        # Ortadan 7 saniyelik frame sec
+        t = min(0.5, vc.duration / 2)
+        frame = vc.get_frame(t)
+        vc.close()
+        # 9:16 formatina getir
+        img = Image.fromarray(frame.astype("uint8")).resize((W, H), Image.LANCZOS)
+        return np.array(img)
+    except Exception as e:
+        print(f"  ⚠ AI video clip hatasi: {e}")
+        return None
+
+
 def fetch_images(queries: list, count: int = 6) -> list:
     """Pixabay'den görsel çeker, olmazsa Pexels dener."""
     results = []
@@ -559,8 +590,15 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
     dirs  = ["center","left","right","up","down","center"]
     clips = []
     for i, seg in enumerate(segments):
-        img_arr   = np.array(images[i])
-        zoom_in   = (i % 2 == 0)
+        # Seedance 2.0 varsa AI video dene, yoksa Pixabay görsel kullan
+        ai_frame = pick_ai_video_clip(
+            visual_desc=seg.get("visual",""),
+            topic=content.get("topic", title),
+            period=period,
+            seg_idx=i, total=len(segments)
+        )
+        img_arr   = ai_frame if ai_frame is not None else np.array(images[i])
+        zoom_in   = (i % 2 == 0) if ai_frame is None else False
         direction = dirs[i % len(dirs)]
         seg_text  = seg.get("text","")
         show_hdr  = (i == 0)

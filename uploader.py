@@ -77,8 +77,13 @@ def build_video_metadata(content_plan: dict, scheduled_time: str = None) -> dict
     title = content_plan["title"][:100]
 
     # Açıklama: içerik + hashtag
-    hashtags = " ".join(content_plan.get("hashtags", [])[:5])
-    description = f"{content_plan['description']}\n\n{hashtags}"[:5000]
+    hashtags = " ".join(content_plan.get("hashtags", [])[:8])
+    us_hashtags = " ".join(content_plan.get("us_trending_hashtags", [])[:5])
+    desc_base = content_plan.get("description", "")
+    if us_hashtags:
+        description = f"{desc_base}\n\n{hashtags} {us_hashtags}"[:5000]
+    else:
+        description = f"{desc_base}\n\n{hashtags}"[:5000]
 
     # Tags max 500 karakter toplam
     tags = content_plan.get("tags", [])[:MAX_TAGS_UPLOAD]

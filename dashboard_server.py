@@ -106,7 +106,12 @@ def make_scheduled_time(hour: int, minute: int = 0) -> str:
     import pytz
     tz    = pytz.timezone(UPLOAD_TIMEZONE)
     now   = datetime.now(tz)
-    sched = now.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
+    # Saat taşmasını düzelt (ör: 27 -> ertesi gün 03:00)
+    extra_days = int(hour) // 24
+    real_hour  = int(hour) % 24
+    sched = now.replace(hour=real_hour, minute=int(minute), second=0, microsecond=0)
+    if extra_days > 0:
+        sched += timedelta(days=extra_days)
     if sched <= now:
         sched += timedelta(days=1)
     return sched.isoformat()
@@ -1311,15 +1316,21 @@ def serve_viral_output(filename):
     return send_from_directory("output/viral", filename)
 
 NIGHTLY_SLOTS = {
+    # Sozler: 01->08, 02->12, 03->20
     1: ("sozler", None,  8),
     2: ("sozler", None, 12),
     3: ("sozler", None, 20),
-    4: ("tarih",  "tarihtebugün",    9),
-    5: ("tarih",  "gizemliolaylar", 15),
-    6: ("tarih",  "unluliderlere",  19),
+    # Viral: 01:30->08, 02:30->12, 03:30->20
     11: ("viral", None,  8),
     12: ("viral", None, 12),
     13: ("viral", None, 20),
+    # Tarih: 01:00 uret -> 09:00 yayinla (TR)
+    # Notes: 01:00 uret -> 20:00 EST = 03:00 TR (+1 gun degil, ayni sabah)
+    # Cozum: Tarih ve Notes uretimini gece 01:00'a tasi, sozlerden 30dk sonra
+    # Ama sozler 01'de — tarih 23:00'da uret -> 09:00 yayinla
+    23: ("tarih",  "tarihtebugün",    9),
+    22: ("tarih",  "gizemliolaylar", 15),
+    21: ("tarih",  "unluliderlere",  19),
 }
 
 NIGHTLY_TOPICS = {
@@ -1384,9 +1395,15 @@ def run_nightly_production(slot_hour=None):
                         cp2 = {"title": meta2.get("title", en["title"])[:90],
                                "description": meta2.get("description",""),
                                "tags": meta2.get("tags",[]), "hashtags": meta2.get("hashtags",[])}
-                        r2 = run_upload(cp2, out2, scheduled_time=sched, channel_id=ch_id2, channel="notesofhistory")
+                        # ABD EST prime time: 04->20:00, 05->21:00, 06->22:00 EST
+                        # EST (UTC-5) -> TR (UTC+3) = +8 saat
+                        # 20:00 EST = 04:00 TR (+1 gun) — ama YouTube planlar
+                        us_est = {21: 20, 22: 21, 23: 22}.get(now_hour, 20)
+                        tr_hour = (us_est + 8) % 24  # 20+8=28 -> 4 (ertesi gun)
+                        sched_us = make_scheduled_time(tr_hour + 24)  # ertesi gun
+                        r2 = run_upload(cp2, out2, scheduled_time=sched_us, channel_id=ch_id2, channel="notesofhistory")
                         add_to_history("notesofhistory", out2, r2.get("video_id",""), r2["url"], cp2["title"])
-                        send_telegram("Notes %02d:00 -> %s" % (publish_hour, r2["url"]))
+                        send_telegram("Notes yuklendi EST %02d:00 (TR %02d:00) -> %s" % (us_est, us_est+7, r2["url"]))
             except Exception as ne:
                 send_telegram("Notes hatasi: %s" % str(ne)[:150])
         except Exception as e:
@@ -1492,15 +1509,18 @@ if __name__ == "__main__":
         import pytz
         tz = pytz.timezone("Europe/Istanbul")
         night_scheduler = BackgroundScheduler(timezone=tz)
-        night_scheduler.add_job(lambda: run_nightly_production(1),  "cron", hour=1,  minute=0, id="night_01")
-        night_scheduler.add_job(lambda: run_nightly_production(2),  "cron", hour=2,  minute=0, id="night_02")
-        night_scheduler.add_job(lambda: run_nightly_production(3),  "cron", hour=3,  minute=0, id="night_03")
-        night_scheduler.add_job(lambda: run_nightly_production(4),  "cron", hour=4,  minute=0, id="night_04")
-        night_scheduler.add_job(lambda: run_nightly_production(5),  "cron", hour=5,  minute=0, id="night_05")
-        night_scheduler.add_job(lambda: run_nightly_production(6),  "cron", hour=6,  minute=0, id="night_06")
-        night_scheduler.add_job(lambda: run_nightly_production(11), "cron", hour=1, minute=30, id="night_11")
-        night_scheduler.add_job(lambda: run_nightly_production(12), "cron", hour=2, minute=30, id="night_12")
-        night_scheduler.add_job(lambda: run_nightly_production(13), "cron", hour=3, minute=30, id="night_13")
+        # Sozler: 01:00, 02:00, 03:00
+        night_scheduler.add_job(lambda: run_nightly_production(1),  "cron", hour=1,  minute=0,  id="night_01")
+        night_scheduler.add_job(lambda: run_nightly_production(2),  "cron", hour=2,  minute=0,  id="night_02")
+        night_scheduler.add_job(lambda: run_nightly_production(3),  "cron", hour=3,  minute=0,  id="night_03")
+        # Viral: 01:30, 02:30, 03:30
+        night_scheduler.add_job(lambda: run_nightly_production(11), "cron", hour=1,  minute=30, id="night_11")
+        night_scheduler.add_job(lambda: run_nightly_production(12), "cron", hour=2,  minute=30, id="night_12")
+        night_scheduler.add_job(lambda: run_nightly_production(13), "cron", hour=3,  minute=30, id="night_13")
+        # Tarih: 21:00->19:00, 22:00->15:00, 23:00->09:00 (ayni gece uret, sabah yayinla)
+        night_scheduler.add_job(lambda: run_nightly_production(21), "cron", hour=21, minute=0,  id="night_21")
+        night_scheduler.add_job(lambda: run_nightly_production(22), "cron", hour=22, minute=0,  id="night_22")
+        night_scheduler.add_job(lambda: run_nightly_production(23), "cron", hour=23, minute=0,  id="night_23")
         night_scheduler.start()
         print("  Sozler: 01:00(8), 02:00(12), 03:00(20) | Viral: 01:30(8), 02:30(12), 03:30(20) | Tarih: 04:00(9), 05:00(15), 06:00(19)")
         print("  🌙 Gece zamanlayıcısı: 04:00, 05:00, 06:00")
