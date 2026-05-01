@@ -34,3 +34,6 @@ google-auth>=2.23.0
 
 # Diğer
 python-dotenv>=1.0.0
+
+#byteplus
+byteplus-python-sdk-v2
