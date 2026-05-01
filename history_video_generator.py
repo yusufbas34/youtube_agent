@@ -35,6 +35,12 @@ try:
 except:
     PIXABAY_API_KEY = "55256954-4e774f9bedfa0d1f2fe7efe0a"
 
+PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY","")
+if not PEXELS_API_KEY:
+    try:
+        from config import PEXELS_API_KEY
+    except: pass
+
 try:
     from config import PEXELS_API_KEY
 except:
@@ -85,6 +91,101 @@ def pick_ai_video_clip(visual_desc: str, topic: str, period: str,
     except Exception as e:
         print(f"  ⚠ AI video clip hatasi: {e}")
         return None
+
+
+def fetch_pexels_video(query: str, output_path: str) -> bool:
+    """Pexels'dan video indir. Basarili olursa True doner."""
+    if not PEXELS_API_KEY:
+        return False
+    try:
+        r = requests.get(
+            "https://api.pexels.com/videos/search",
+            headers={"Authorization": PEXELS_API_KEY},
+            params={"query": query, "per_page": 5,
+                    "orientation": "portrait", "size": "medium"},
+            timeout=10, verify=False
+        )
+        if r.status_code != 200:
+            return False
+        videos = r.json().get("videos", [])
+        if not videos:
+            return False
+        # En kısa vertical video sec
+        for v in videos:
+            files = v.get("video_files", [])
+            # 720p portrait filtrele
+            portrait = [f for f in files if
+                       f.get("width",0) < f.get("height",1) and
+                       f.get("quality") in ("hd","sd")]
+            if not portrait:
+                portrait = files
+            if not portrait:
+                continue
+            url = portrait[0].get("link","")
+            if not url:
+                continue
+            vr = requests.get(url, timeout=30, verify=False,
+                              headers={"User-Agent":"Mozilla/5.0"})
+            if vr.status_code == 200:
+                with open(output_path, "wb") as f:
+                    f.write(vr.content)
+                sz = os.path.getsize(output_path)
+                if sz > 50000:  # min 50KB
+                    print(f"    ✅ Pexels video: {query[:30]} ({sz//1024}KB)")
+                    return True
+    except Exception as e:
+        print(f"    ⚠ Pexels video hatasi: {e}")
+    return False
+
+
+def fetch_pixabay_video(query: str, output_path: str) -> bool:
+    """Pixabay'den video indir. Basarili olursa True doner."""
+    if not PIXABAY_API_KEY:
+        return False
+    try:
+        r = requests.get(
+            "https://pixabay.com/api/videos/",
+            params={"key": PIXABAY_API_KEY, "q": query,
+                    "per_page": 5, "video_type": "film",
+                    "order": "popular"},
+            timeout=10, verify=False
+        )
+        if r.status_code != 200:
+            return False
+        hits = r.json().get("hits", [])
+        if not hits:
+            return False
+        for hit in hits:
+            videos = hit.get("videos", {})
+            # medium veya small sec
+            v = videos.get("medium") or videos.get("small") or videos.get("large")
+            if not v:
+                continue
+            url = v.get("url","")
+            if not url:
+                continue
+            vr = requests.get(url, timeout=30, verify=False)
+            if vr.status_code == 200:
+                with open(output_path, "wb") as f:
+                    f.write(vr.content)
+                sz = os.path.getsize(output_path)
+                if sz > 50000:
+                    print(f"    ✅ Pixabay video: {query[:30]} ({sz//1024}KB)")
+                    return True
+    except Exception as e:
+        print(f"    ⚠ Pixabay video hatasi: {e}")
+    return False
+
+
+def fetch_stock_video(query: str, output_path: str) -> bool:
+    """Pexels → Pixabay sirasiyla video indir."""
+    # Once Pexels dene
+    if fetch_pexels_video(query, output_path):
+        return True
+    # Pixabay'e dus
+    if fetch_pixabay_video(query, output_path):
+        return True
+    return False
 
 
 def fetch_images(queries: list, count: int = 6) -> list:
@@ -590,30 +691,71 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
     dirs  = ["center","left","right","up","down","center"]
     clips = []
     for i, seg in enumerate(segments):
-        # Seedance 2.0 varsa AI video dene, yoksa Pixabay görsel kullan
+        # 1. Seedance AI video dene
         ai_frame = pick_ai_video_clip(
             visual_desc=seg.get("visual",""),
             topic=content.get("topic", title),
             period=period,
             seg_idx=i, total=len(segments)
         )
-        img_arr   = ai_frame if ai_frame is not None else np.array(images[i])
-        zoom_in   = (i % 2 == 0) if ai_frame is None else False
+
+        stock_video_path = None
+        if ai_frame is None:
+            # 2. Stock video dene (Pexels + Pixabay)
+            query_v = seg.get("visual","") or query_for_visual(seg.get("text",""))
+            tmp_v = str(TMP_DIR / f"stock_{i}_{int(time.time())}.mp4")
+            if fetch_stock_video(query_v, tmp_v):
+                stock_video_path = tmp_v
+
+        if ai_frame is not None:
+            img_arr  = ai_frame
+            zoom_in  = False
+            use_video = False
+        elif stock_video_path:
+            img_arr  = None  # video kullanilacak
+            zoom_in  = False
+            use_video = True
+        else:
+            img_arr  = np.array(images[i])
+            zoom_in  = (i % 2 == 0)
+            use_video = False
+
         direction = dirs[i % len(dirs)]
         seg_text  = seg.get("text","")
         show_hdr  = (i == 0)
         sd        = seg_durations[i]
 
-        def make_frame(t, _img=img_arr,
-                       _txt=seg.get("narration") or seg.get("text",""),
-                       _sd=sd, _zi=zoom_in, _dir=direction, _i=i, _sh=show_hdr):
-            frame = ken_burns(Image.fromarray(_img), t, _sd, _zi, _dir)
-            return add_overlay(
-                frame, t, _txt, _sd, accent_hex,
-                title=title if _sh else "",
-                period=period if _sh else "",
-                seg_idx=_i, total=len(segments)
-            )
+        _seg_txt = seg.get("narration") or seg.get("text","")
+        if use_video and stock_video_path:
+            # Gercek video kullan
+            from moviepy.editor import VideoFileClip as _VFC
+            _vc = _VFC(stock_video_path)
+            _vc_dur = _vc.duration
+            # 9:16 formatina crop
+            _vw, _vh = _vc.size
+            if _vw / _vh > 9/16:
+                _new_w = int(_vh * 9/16)
+                _vc = _vc.crop(x_center=_vw//2, width=_new_w)
+            _vc = _vc.resize((W, H))
+            def make_frame(t, _v=_vc, _dur=_vc_dur, _txt=_seg_txt,
+                           _sd=sd, _i=i, _sh=show_hdr):
+                vt = min(t, _dur - 0.05)
+                frame = Image.fromarray(_v.get_frame(vt % _dur).astype("uint8"))
+                return add_overlay(frame, t, _txt, _sd, accent_hex,
+                    title=title if _sh else "",
+                    period=period if _sh else "",
+                    seg_idx=_i, total=len(segments))
+        else:
+            def make_frame(t, _img=img_arr,
+                           _txt=_seg_txt,
+                           _sd=sd, _zi=zoom_in, _dir=direction, _i=i, _sh=show_hdr):
+                frame = ken_burns(Image.fromarray(_img), t, _sd, _zi, _dir)
+                return add_overlay(
+                    frame, t, _txt, _sd, accent_hex,
+                    title=title if _sh else "",
+                    period=period if _sh else "",
+                    seg_idx=_i, total=len(segments)
+                )
 
         # Ses: 0.3s gecikmeyle başlat, segmentin kendi TTS'i
         # Audio: 0.3s gecikmeli başlat, sona 0.3s fade out ekle
