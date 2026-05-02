@@ -20,6 +20,8 @@ import edge_tts
 W, H       = 1080, 1920
 FPS        = 20
 OUTPUT_DIR = Path("output/tarih")
+TMP_DIR    = Path("/tmp/history_video")
+TMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # Notes of History sabitleri
 NOTES_OUTPUT_DIR     = Path("output/notesofhistory")
@@ -178,13 +180,17 @@ def fetch_pixabay_video(query: str, output_path: str) -> bool:
 
 
 def fetch_stock_video(query: str, output_path: str) -> bool:
-    """Pexels → Pixabay sirasiyla video indir."""
-    # Once Pexels dene
-    if fetch_pexels_video(query, output_path):
-        return True
-    # Pixabay'e dus
-    if fetch_pixabay_video(query, output_path):
-        return True
+    """Pexels → Pixabay sirasiyla video indir. Hic biri calismasa False doner."""
+    try:
+        if fetch_pexels_video(query, output_path):
+            return True
+    except Exception as e:
+        print(f"    ⚠ Pexels video: {e}")
+    try:
+        if fetch_pixabay_video(query, output_path):
+            return True
+    except Exception as e:
+        print(f"    ⚠ Pixabay video: {e}")
     return False
 
 
@@ -692,32 +698,40 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
     clips = []
     for i, seg in enumerate(segments):
         # 1. Seedance AI video dene
-        ai_frame = pick_ai_video_clip(
-            visual_desc=seg.get("visual",""),
-            topic=content.get("topic", title),
-            period=period,
-            seg_idx=i, total=len(segments)
-        )
+        ai_frame = None
+        try:
+            ai_frame = pick_ai_video_clip(
+                visual_desc=seg.get("visual",""),
+                topic=content.get("topic", title),
+                period=period,
+                seg_idx=i, total=len(segments)
+            )
+        except Exception as e:
+            print(f"    ⚠ AI video atlandı: {e}")
 
+        # 2. Stock video dene (Pexels + Pixabay)
         stock_video_path = None
         if ai_frame is None:
-            # 2. Stock video dene (Pexels + Pixabay)
-            query_v = seg.get("visual","") or query_for_visual(seg.get("text",""))
-            tmp_v = str(TMP_DIR / f"stock_{i}_{int(time.time())}.mp4")
-            if fetch_stock_video(query_v, tmp_v):
-                stock_video_path = tmp_v
+            try:
+                query_v = seg.get("visual","") or query_for_visual(seg.get("text",""))
+                tmp_v = str(TMP_DIR / f"stock_{i}_{int(time.time())}.mp4")
+                if fetch_stock_video(query_v, tmp_v):
+                    stock_video_path = tmp_v
+            except Exception as e:
+                print(f"    ⚠ Stock video atlandı: {e}")
 
+        # 3. Fallback: Pixabay/Pexels fotoğraf (her zaman çalışır)
         if ai_frame is not None:
-            img_arr  = ai_frame
-            zoom_in  = False
+            img_arr   = ai_frame
+            zoom_in   = False
             use_video = False
         elif stock_video_path:
-            img_arr  = None  # video kullanilacak
-            zoom_in  = False
+            img_arr   = None
+            zoom_in   = False
             use_video = True
         else:
-            img_arr  = np.array(images[i])
-            zoom_in  = (i % 2 == 0)
+            img_arr   = np.array(images[i])
+            zoom_in   = (i % 2 == 0)
             use_video = False
 
         direction = dirs[i % len(dirs)]
@@ -726,25 +740,39 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
         sd        = seg_durations[i]
 
         _seg_txt = seg.get("narration") or seg.get("text","")
+        _vc = None
         if use_video and stock_video_path:
-            # Gercek video kullan
-            from moviepy.editor import VideoFileClip as _VFC
-            _vc = _VFC(stock_video_path)
-            _vc_dur = _vc.duration
-            # 9:16 formatina crop
-            _vw, _vh = _vc.size
-            if _vw / _vh > 9/16:
-                _new_w = int(_vh * 9/16)
-                _vc = _vc.crop(x_center=_vw//2, width=_new_w)
-            _vc = _vc.resize((W, H))
+            try:
+                from moviepy.editor import VideoFileClip as _VFC
+                _vc = _VFC(stock_video_path)
+                _vc_dur = _vc.duration
+                _vw, _vh = _vc.size
+                if _vw / _vh > 9/16:
+                    _new_w = int(_vh * 9/16)
+                    _vc = _vc.crop(x_center=_vw//2, width=_new_w)
+                _vc = _vc.resize((W, H))
+            except Exception as e:
+                print(f"    ⚠ Video yuklenemedi, fotograf kullaniliyor: {e}")
+                _vc = None
+                use_video = False
+                img_arr = np.array(images[i])
+
+        if _vc is not None:
             def make_frame(t, _v=_vc, _dur=_vc_dur, _txt=_seg_txt,
                            _sd=sd, _i=i, _sh=show_hdr):
-                vt = min(t, _dur - 0.05)
-                frame = Image.fromarray(_v.get_frame(vt % _dur).astype("uint8"))
-                return add_overlay(frame, t, _txt, _sd, accent_hex,
-                    title=title if _sh else "",
-                    period=period if _sh else "",
-                    seg_idx=_i, total=len(segments))
+                try:
+                    vt = min(t, _dur - 0.05)
+                    frame = Image.fromarray(_v.get_frame(vt % _dur).astype("uint8"))
+                    return add_overlay(frame, t, _txt, _sd, accent_hex,
+                        title=title if _sh else "",
+                        period=period if _sh else "",
+                        seg_idx=_i, total=len(segments))
+                except Exception:
+                    blank = Image.new("RGB", (W, H), (10,5,0))
+                    return add_overlay(blank, t, _txt, _sd, accent_hex,
+                        title=title if _sh else "",
+                        period=period if _sh else "",
+                        seg_idx=_i, total=len(segments))
         else:
             def make_frame(t, _img=img_arr,
                            _txt=_seg_txt,
