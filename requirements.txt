@@ -18,6 +18,6 @@ pytz>=2024.1
 # Geliştirme yardımcıları (opsiyonel)
 python-dotenv>=1.0.0
 
-# BytePlus ModelArk (Seedance AI Video)
-byteplus-python-sdk-v2>=0.3.0
-volcengine-python-sdk>=1.0.0
+# BytePlus ModelArk (opsiyonel - Seedance AI Video)
+# Aktive etmek için: pip install byteplus-python-sdk-v2
+# byteplus-python-sdk-v2>=0.3.0
