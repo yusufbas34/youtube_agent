@@ -11,15 +11,17 @@ TMP_DIR = Path("/tmp/ai_video")
 TMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # Model seçimi — önce Fast (daha ucuz), kalite için Standard
-MODEL_FAST     = "dreamina-seedance-2-0-fast-260128"
-MODEL_STANDARD = "dreamina-seedance-2-0-260128"
+MODEL_FAST     = "seedance-1-5-pro-251215"  # Aktif model ID
+MODEL_STANDARD = "seedance-1-5-pro-251215"  # Aktif model ID
 
 BASE_URL = "https://ark.ap-southeast.bytepluses.com/api/v3"
 
 
 def get_ark_client():
     """BytePlus Ark client oluştur."""
-    api_key = os.environ.get("BYTEPLUS_API_KEY", "")
+    # Railway'de BYTEPLUS_API_KEY veya ARK_API_KEY olarak eklenebilir
+    api_key = (os.environ.get("BYTEPLUS_API_KEY","") or
+               os.environ.get("ARK_API_KEY",""))
     if not api_key:
         try:
             from config import BYTEPLUS_API_KEY
@@ -29,7 +31,7 @@ def get_ark_client():
         raise ValueError("BYTEPLUS_API_KEY eksik")
     try:
         from byteplussdkarkruntime import Ark
-        return Ark(base_url=BASE_URL, api_key=api_key)
+        return Ark(base_url=BASE_URL, api_key=api_key)  # ARK_API_KEY or BYTEPLUS_API_KEY
     except ImportError:
         raise ImportError("pip install byteplus-python-sdk-v2")
 
@@ -46,13 +48,14 @@ def generate_segment_video(prompt: str, duration: int = 5,
     - output_path: kaydedilecek dosya
     Döner: video dosya yolu veya None
     """
-    api_key = os.environ.get("BYTEPLUS_API_KEY", "")
+    api_key = (os.environ.get("BYTEPLUS_API_KEY","") or
+               os.environ.get("ARK_API_KEY",""))
     if not api_key:
         try:
             from config import BYTEPLUS_API_KEY; api_key = BYTEPLUS_API_KEY
         except: pass
     if not api_key:
-        print("  ⚠ BYTEPLUS_API_KEY yok, Seedance atlanıyor")
+        print("  ⚠ BYTEPLUS_API_KEY/ARK_API_KEY yok, Seedance atlanıyor")
         return None
 
     headers = {
@@ -208,7 +211,8 @@ def build_history_prompt(visual: str, topic: str, period: str,
 
 def is_seedance_available() -> bool:
     """BytePlus API key mevcut mu kontrol et."""
-    key = os.environ.get("BYTEPLUS_API_KEY", "")
+    key = (os.environ.get("BYTEPLUS_API_KEY","") or
+            os.environ.get("ARK_API_KEY",""))
     if not key:
         try:
             from config import BYTEPLUS_API_KEY; key = BYTEPLUS_API_KEY

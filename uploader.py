@@ -50,20 +50,51 @@ def get_authenticated_service(channel: str = "sozler"):
         except:
             pass
 
-    # 3. Token geçersizse yenile
+    # 3. Token geçersizse yenile — birden fazla deneme
     if credentials and credentials.expired and credentials.refresh_token:
-        try:
-            credentials.refresh(Request())
-            # Yenilenen token'ı DOĞRU dosyaya kaydet
-            with open(token_file, "w") as f:
-                f.write(credentials.to_json())
-            print(f"  ✅ Token yenilendi: {token_file}")
-        except Exception as e:
-            print(f"  ⚠ Token yenileme hatası: {e}")
-            credentials = None
+        for attempt in range(3):
+            try:
+                credentials.refresh(Request())
+                with open(token_file, "w") as f:
+                    f.write(credentials.to_json())
+                # Railway env variable'ı da güncelle (bellekte)
+                import base64 as _b64
+                new_b64 = _b64.b64encode(credentials.to_json().encode()).decode()
+                env_key = f"TOKEN_{channel.upper()}"
+                os.environ[env_key] = new_b64
+                print(f"  ✅ Token yenilendi: {token_file} (deneme {attempt+1})")
+                break
+            except Exception as e:
+                print(f"  ⚠ Token yenileme denemesi {attempt+1}/3: {e}")
+                import time as _t; _t.sleep(2)
+                credentials = None
+
+    # Token hâlâ geçersizse env variable'dan yeniden yükle
+    if not credentials or not credentials.valid:
+        env_key = f"TOKEN_{channel.upper()}" if channel != "sozler" else "TOKEN_SOZLER"
+        val = os.environ.get(env_key, "")
+        if val:
+            try:
+                import base64 as _b64
+                from google.oauth2.credentials import Credentials as GCreds2
+                decoded = _b64.b64decode(val).decode("utf-8")
+                with open(token_file, "w") as f:
+                    f.write(decoded)
+                credentials = GCreds2.from_authorized_user_file(token_file)
+                if credentials and credentials.refresh_token:
+                    credentials.refresh(Request())
+                    with open(token_file, "w") as f:
+                        f.write(credentials.to_json())
+                    print(f"  ✅ Token env'den yenilendi: {token_file}")
+            except Exception as e:
+                print(f"  ⚠ Env token yenileme: {e}")
 
     if not credentials or not credentials.valid:
-        raise Exception(f"Token geçersiz/eksik: {token_file}. Railway'de TOKEN_{channel.upper()} env variable'ı kontrol et.")
+        raise Exception(
+            f"Token yenilenemedi: {token_file}. "
+            f"Bilgisayarda 'python create_{channel}_token.py' çalıştır, "
+            f"Railway'de TOKEN_{channel.upper()} güncelle."
+        )
 
     return build("youtube", "v3", credentials=credentials)
 
