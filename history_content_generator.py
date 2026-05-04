@@ -131,9 +131,28 @@ Sadece JSON döndür (başka hiçbir şey yazma):
 
 
 def parse_response(text):
+    import re as _re, json as _json
     if "```json" in text: text = text.split("```json")[1].split("```")[0]
     elif "```" in text:   text = text.split("```")[1].split("```")[0]
-    return json.loads(text.strip())
+    text = text.strip()
+    try:
+        return _json.loads(text)
+    except _json.JSONDecodeError:
+        pass
+    fixed = text.replace('\r\n', '\n').replace('\r', '\n')
+    fixed = _re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', fixed)
+    try:
+        return _json.loads(fixed)
+    except _json.JSONDecodeError:
+        pass
+    match = _re.search(r'\{[\s\S]*\}', fixed)
+    if match:
+        try:
+            return _json.loads(match.group())
+        except _json.JSONDecodeError:
+            pass
+    raise _json.JSONDecodeError("JSON parse basarisiz", text, 0)
+
 
 
 def generate_with_claude(prompt):
