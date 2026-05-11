@@ -6,7 +6,7 @@ Tarih Kanalı Video Üreticisi v4
 - Siyah kenar yok
 """
 
-import os, json, asyncio, ssl, requests, random, io, re
+import os, json, asyncio, ssl, requests, random, io, re, time
 from datetime import datetime
 from pathlib import Path
 import numpy as np
@@ -141,39 +141,46 @@ def fetch_pexels_video(query: str, output_path: str) -> bool:
 
 
 def fetch_pixabay_video(query: str, output_path: str) -> bool:
-    """Pixabay'den video indir. Basarili olursa True doner."""
+    """Pixabay video API - indir ve kaydet."""
     if not PIXABAY_API_KEY:
         return False
     try:
         r = requests.get(
             "https://pixabay.com/api/videos/",
             params={"key": PIXABAY_API_KEY, "q": query,
-                    "per_page": 5, "video_type": "film",
-                    "order": "popular"},
-            timeout=10, verify=False
+                    "per_page": 10, "order": "popular"},
+            timeout=15, verify=False
         )
         if r.status_code != 200:
+            print(f"    ⚠ Pixabay video API {r.status_code}: {query[:30]}")
             return False
         hits = r.json().get("hits", [])
         if not hits:
+            print(f"    ⚠ Pixabay video sonuc yok: {query[:30]}")
             return False
         for hit in hits:
             videos = hit.get("videos", {})
-            # medium veya small sec
-            v = videos.get("medium") or videos.get("small") or videos.get("large")
-            if not v:
-                continue
-            url = v.get("url","")
-            if not url:
-                continue
-            vr = requests.get(url, timeout=30, verify=False)
-            if vr.status_code == 200:
-                with open(output_path, "wb") as f:
-                    f.write(vr.content)
-                sz = os.path.getsize(output_path)
-                if sz > 50000:
-                    print(f"    ✅ Pixabay video: {query[:30]} ({sz//1024}KB)")
-                    return True
+            # Tercih sirasi: medium > small > large > tiny
+            for size in ["medium", "small", "large", "tiny"]:
+                v = videos.get(size)
+                if not v:
+                    continue
+                # Pixabay video URL field'i 'url' degil bazen 'link' de olabilir
+                url = v.get("url") or v.get("link","")
+                if not url:
+                    continue
+                try:
+                    vr = requests.get(url, timeout=60, verify=False,
+                                     headers={"User-Agent":"Mozilla/5.0",
+                                             "Referer":"https://pixabay.com"})
+                    if vr.status_code == 200 and len(vr.content) > 50000:
+                        with open(output_path, "wb") as f:
+                            f.write(vr.content)
+                        sz = os.path.getsize(output_path)
+                        print(f"    ✅ Pixabay video ({size}): {query[:30]} ({sz//1024}KB)")
+                        return True
+                except Exception:
+                    continue
     except Exception as e:
         print(f"    ⚠ Pixabay video hatasi: {e}")
     return False
@@ -193,6 +200,23 @@ def fetch_stock_video(query: str, output_path: str) -> bool:
         print(f"    ⚠ Pixabay video: {e}")
     return False
 
+
+def query_for_visual(text: str) -> str:
+    """Segment metninden Ingilizce gorsel arama sorgusu uretir."""
+    # Turkce kelimeleri Ingilizce'ye cevir - stok video aramalari icin
+    replacements = {
+        "savas": "war battle", "ordu": "army soldiers", "kale": "medieval castle",
+        "imparatorluk": "empire ancient", "sultan": "sultan ottoman",
+        "roma": "ancient rome", "osmanli": "ottoman empire",
+        "tarih": "history ancient", "kral": "king medieval",
+        "saray": "palace royal", "harita": "ancient map",
+        "deniz": "sea ocean dramatic", "atlar": "horses epic",
+        "sehir": "ancient city", "tapınak": "temple ancient",
+    }
+    q = text.lower()[:60]
+    for tr, en in replacements.items():
+        q = q.replace(tr, en)
+    return q.strip() or "dramatic historical epic cinematic"
 
 def fetch_images(queries: list, count: int = 6) -> list:
     """Pixabay'den görsel çeker, olmazsa Pexels dener."""
@@ -713,8 +737,16 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
         stock_video_path = None
         if ai_frame is None:
             try:
-                query_v = seg.get("visual","") or query_for_visual(seg.get("text",""))
+                # Segment visual Turkce olabilir — Ingilizce'ye cevir + pexels_queries kullan
+                visual_raw = seg.get("visual","")
+                if visual_raw:
+                    query_v = query_for_visual(visual_raw)
+                elif i < len(pexels_q):
+                    query_v = pexels_q[i]  # Claude'un urettigi Ingilizce sorgu
+                else:
+                    query_v = query_for_visual(seg.get("text",""))
                 tmp_v = str(TMP_DIR / f"stock_{i}_{int(time.time())}.mp4")
+                print(f"    🔍 Video aranıyor: {query_v[:50]}")
                 if fetch_stock_video(query_v, tmp_v):
                     stock_video_path = tmp_v
             except Exception as e:
