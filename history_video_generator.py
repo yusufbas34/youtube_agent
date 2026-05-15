@@ -507,8 +507,13 @@ def generate_tts(text, path, channel="tarih"):
             text=text,
             voice_id=voice_id,
             model_id="eleven_multilingual_v2",
-            voice_settings={"stability": 0.72, "similarity_boost": 0.85,
-                           "style": 0.30, "use_speaker_boost": True},
+            voice_settings={
+                "stability": 0.65,        # biraz daha dinamik
+                "similarity_boost": 0.88,  # sese daha yakin
+                "style": 0.45,            # dramatik anlatim
+                "use_speaker_boost": True,
+                "speed": 1.15,            # hafif hizli - daha enerjik anlatim
+            },
         )
         save(audio, path)
         print(f"    ElevenLabs TTS ({channel}): {os.path.basename(path)}")
@@ -520,7 +525,7 @@ def generate_tts(text, path, channel="tarih"):
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
-            await edge_tts.Communicate(text=t, voice=v, rate="+5%").save(p)
+            await edge_tts.Communicate(text=t, voice=v, rate="+15%", volume="+10%").save(p)
         asyncio.run(_edge_ch(text, path, voice))
 
 def make_title_thumbnail(title: str, accent_hex: str = "#d97706") -> np.ndarray:
