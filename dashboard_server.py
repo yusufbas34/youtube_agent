@@ -987,6 +987,36 @@ def api_channel_analytics(channel):
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/did/test", methods=["POST"])
+def api_did_test():
+    """D-ID API test endpoint."""
+    def run():
+        try:
+            from did_generator import test_did_api
+            result = test_did_api()
+            log(f"D-ID test: {result.get('message', result.get('error','?'))}", "tarih")
+            if result.get("ok") and result.get("video_path"):
+                import shutil
+                dest = "output/tarih/did_test.mp4"
+                shutil.copy(result["video_path"], dest)
+                result["video_url"] = "/output/tarih/did_test.mp4"
+        except Exception as e:
+            result = {"ok": False, "error": str(e)}
+        log(f"D-ID sonuc: {'OK' if result.get('ok') else result.get('error','?')}", "tarih")
+        return result
+    import threading
+    results = {}
+    def _run():
+        r = run()
+        results.update(r)
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=200)
+    if not results:
+        return jsonify({"ok": False, "error": "Timeout"}), 500
+    return jsonify(results)
+
+
 @app.route("/api/tarih/suggestions")
 def api_tarih_suggestions():
     """Her seferinde yeni 5 konu onerisi uretir, eskilerle kontrol eder."""

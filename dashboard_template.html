@@ -396,6 +396,17 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
         <button class="btn btn-orange" id="btn_t_uret" onclick="doTarih(false)">Video Üret</button>
         <button class="btn btn-green" id="btn_t_yukle" onclick="doTarih(true)">Üret + Yükle</button>
       </div>
+      <div style="margin-top:20px;background:#1a0a2e;border:1px solid #7c3aed;border-radius:12px;padding:16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="font-size:20px">🎭</span>
+          <div>
+            <div style="font-family:Syne,sans-serif;font-weight:700;color:#a78bfa">D-ID Avatar Test</div>
+            <div style="font-size:12px;color:var(--muted2)">Konuşan avatar — normal sistemi etkilemez</div>
+          </div>
+        </div>
+        <div id="did_result" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;font-size:13px"></div>
+        <button class="btn" style="background:linear-gradient(135deg,#4a1d96,#7c3aed);color:#fff" id="btn_did" onclick="testDID()">🎬 D-ID Test Çalıştır</button>
+      </div>
     </div>
     <div>
       <div class="sec">Canlı Log</div>
@@ -703,6 +714,29 @@ function setFmt(f,btn){
   document.querySelectorAll('[id^="fmt_"]').forEach(function(b){b.classList.remove('active');});
   btn.classList.add('active');
 }
+async function testDID(){
+  if(!IS_SRV){alert("Sunucu modu gerekli");return;}
+  var btn=document.getElementById("btn_did");
+  var res=document.getElementById("did_result");
+  btn.disabled=true; btn.textContent="Üretiliyor...";
+  res.style.display="block"; res.style.color="var(--muted2)";
+  res.innerHTML="D-ID avatar video üretiliyor (~2-3 dk)...";
+  try{
+    var r=await fetch("/api/did/test",{method:"POST"});
+    var d=await r.json();
+    if(d.ok){
+      res.style.color="var(--green2)";
+      res.innerHTML=(d.message||"Basarili")+(d.video_url?
+        "<br><br><video src="+d.video_url+" controls style='width:100%;max-width:300px;border-radius:8px;margin-top:8px'></video>"
+        :"");
+    }else{
+      res.style.color="var(--viral2)";
+      res.innerHTML="Hata: "+(d.error||"?");
+    }
+  }catch(e){res.style.color="var(--viral2)";res.innerHTML="Hata: "+e;}
+  btn.disabled=false; btn.textContent="D-ID Test Calistir";
+}
+
 async function loadSuggestions(){
   if(!IS_SRV) return;
   var btn=document.getElementById('btn_suggestions');
