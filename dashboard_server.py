@@ -1007,13 +1007,18 @@ def api_did_test():
     import threading
     results = {}
     def _run():
-        r = run()
-        results.update(r)
+        try:
+            r = run()
+            results.update(r)
+        except Exception as e:
+            import traceback
+            results.update({"ok": False, "error": str(e), "trace": traceback.format_exc()[:500]})
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     t.join(timeout=200)
     if not results:
-        return jsonify({"ok": False, "error": "Timeout"}), 500
+        return jsonify({"ok": False, "error": "Timeout (200s)"}), 500
+    print(f"D-ID result: {results}")
     return jsonify(results)
 
 

@@ -128,9 +128,9 @@ def create_talking_avatar(
             json=payload,
             timeout=30
         )
-        print(f"  → Talk isteği: {r.status_code}")
+        print(f"  → Talk isteği: {r.status_code} — {r.text[:500]}")
         if r.status_code not in (200, 201):
-            print(f"  ❌ D-ID hata: {r.text[:300]}")
+            print(f"  ❌ D-ID hata: {r.text[:500]}")
             return None
 
         talk_id = r.json().get("id")
