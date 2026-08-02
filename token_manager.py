@@ -12,15 +12,13 @@ def setup_tokens():
     Railway'de TOKEN_* env var'larından token dosyalarını oluşturur.
     """
     token_map = {
-        "TOKEN_SOZLER":         "token.json",
         "TOKEN_TARIH":          "token_tarih.json",
-        "TOKEN_VIRAL":          "token_viral.json",
         "TOKEN_NOTESOFHISTORY": "token_notesofhistory.json",
     }
     creds_map = {
+        # credentials.json Notes of History ile paylaşılan OAuth client — env adı legacy
         "CREDENTIALS_SOZLER": "credentials.json",
         "CREDENTIALS_TARIH":  "credentials_tarih.json.json",
-        "CREDENTIALS_VIRAL":  "credentials_viral.json",
     }
 
     for env_key, file_name in {**token_map, **creds_map}.items():
@@ -51,9 +49,8 @@ def get_token_b64(file_name: str) -> str:
 
 
 if __name__ == "__main__":
-    for fname in ["token.json", "token_tarih.json", "token_viral.json",
-                  "token_notesofhistory.json", "credentials.json",
-                  "credentials_tarih.json.json", "credentials_viral.json"]:
+    for fname in ["token_tarih.json", "token_notesofhistory.json",
+                  "credentials.json", "credentials_tarih.json.json"]:
         b64 = get_token_b64(fname)
         if b64:
             print(f"\n{fname}: {len(b64)} karakter")

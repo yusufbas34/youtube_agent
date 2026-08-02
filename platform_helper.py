@@ -38,6 +38,6 @@ LOGO_PATH = os.path.join(BASE_DIR, "tarihtennotlargiriscikis.png")
 
 # ── Output dizinleri ──────────────────────────────────────────────
 def ensure_dirs():
-    for d in ["output/sozler", "output/tarih", "output/viral",
+    for d in ["output/tarih", "output/notesofhistory",
               "output/tmp", "data", "music_cache"]:
         os.makedirs(os.path.join(BASE_DIR, d), exist_ok=True)

@@ -8,8 +8,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
-from quotes_manager import refresh_quotes, mark_quote_used, delete_quote
-from quote_video_generator import create_quote_video
 from generate_dashboard import generate_dashboard
 from config import UPLOAD_TIME, UPLOAD_TIMEZONE
 
@@ -62,7 +60,7 @@ NOTES_STATUS = {
 }
 
 
-def log(msg, channel="sozler"):
+def log(msg, channel="tarih"):
     ts    = datetime.now().strftime("%H:%M:%S")
     entry = f"[{ts}] {msg}"
     if channel == "tarih":
@@ -74,9 +72,6 @@ def log(msg, channel="sozler"):
         # Tarih sayfasında da göster
         TARIH_STATUS["log"].append(entry)
         TARIH_STATUS["log"] = TARIH_STATUS["log"][-100:]
-    elif channel == "viral":
-        VIRAL_STATUS["log"].append(entry)
-        VIRAL_STATUS["log"] = VIRAL_STATUS["log"][-100:]
     else:
         STATUS["log"].append(entry)
         STATUS["log"] = STATUS["log"][-100:]
@@ -131,13 +126,13 @@ def safe_sched(raw_hour, default_hour: int = None) -> str | None:
 
 # ── Upload History ─────────────────────────────────────────────────
 
-def get_uploaded_paths(channel="sozler") -> set:
+def get_uploaded_paths(channel="tarih") -> set:
     """Yüklenen videoların yollarını döner."""
     hist = load_json(f"data/{channel}_history.json", [])
     return {h.get("video_path","") for h in hist}
 
 
-def get_queued_paths(channel="sozler") -> set:
+def get_queued_paths(channel="tarih") -> set:
     """Sıradaki videoların yollarını döner."""
     queue = load_json(f"data/{channel}_queue.json", [])
     return {q.get("video_path","") for q in queue if q.get("status") in ("bekliyor","yukleniyor")}
@@ -163,95 +158,6 @@ def remove_from_queue_by_path(channel: str, video_path: str):
     save_json(f"data/{channel}_queue.json", queue)
 
 
-# ── Video Üretimi ─────────────────────────────────────────────────
-
-def produce_videos(queue: list, auto_upload: bool, scheduled_hour: int = None):
-    STATUS["running"]   = True
-    STATUS["completed"] = []
-    STATUS["errors"]    = []
-
-    log(f"Üretim başladı — {len(queue)} video")
-
-    for i, quote in enumerate(queue):
-        STATUS["current"] = {
-            "index": i+1, "total": len(queue),
-            "quote": quote.get("text","")[:60],
-            "author": quote.get("author","")
-        }
-        log(f"Video {i+1}/{len(queue)}: {quote.get('text','')[:50]}...")
-
-        try:
-            ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
-            outpath  = f"output/sozler/quote_{ts}_{i+1}.mp4"
-            Path("output/sozler").mkdir(parents=True, exist_ok=True)
-
-            video_path = create_quote_video(quote, outpath)
-            log(f"Video hazır: {outpath}")
-
-            # Metadata kaydet
-            meta = {
-                "title":       (quote.get("text","")[:85] + " — " + quote.get("author","Anonim")),
-                "description": quote.get("text","") + "\n\n— " + quote.get("author","Anonim") + "\n\n#motivasyon #ozlusoz #shorts #kisiselgelisim",
-                "tags":        ["motivasyon","ozlusoz","shorts","kisiselgelisim", quote.get("category","motivasyon")],
-                "hashtags":    ["#motivasyon","#ozlusoz","#shorts"],
-                "quote_id":    quote.get("id",""),
-                "quote_text":  quote.get("text",""),
-                "author":      quote.get("author","Anonim"),
-                "category":    quote.get("category",""),
-                "channel":     "sozler",
-            }
-            with open(outpath.replace(".mp4",".json"),"w",encoding="utf-8") as mf:
-                json.dump(meta, mf, ensure_ascii=False, indent=2)
-
-            result = {
-                "quote_id":   quote["id"],
-                "quote_text": quote.get("text",""),
-                "author":     quote.get("author",""),
-                "video_path": video_path,
-                "produced_at": datetime.now().isoformat(),
-                "video_url":  None,
-            }
-
-            if auto_upload:
-                log("YouTube'a yükleniyor...")
-                try:
-                    from uploader import run_upload
-                    from upload_scheduler import make_scheduled_time as mst
-                    h, m = map(int, UPLOAD_TIME.split(":"))
-                    # scheduled_hour None, "now", "" = anlık; sayı = planla
-                    if not scheduled_hour or scheduled_hour == "now":
-                        sched = None
-                    else:
-                        sched = mst(int(scheduled_hour), 0)
-                    from channel_config import SOZLER_CHANNEL_ID
-                    upload = run_upload(meta, video_path, scheduled_time=sched, channel_id=SOZLER_CHANNEL_ID)
-                    result["video_url"] = upload["url"]
-                    result["video_id"]  = upload["video_id"]
-                    # Söz kullanıldı kaydet
-                    mark_quote_used(quote["id"], upload["url"])
-                    # History'e ekle
-                    add_to_history("sozler", video_path, upload.get("video_id",""), upload["url"], meta["title"])
-                    log(f"Yüklendi: {upload['url']}")
-                except Exception as e:
-                    log(f"Yukleme hatasi: {str(e)}")
-                    result["upload_error"] = str(e)
-                    mark_quote_used(quote["id"])
-            else:
-                # Sadece üret - söz kullanıldı kaydet
-                mark_quote_used(quote["id"])
-
-            STATUS["completed"].append(result)
-
-        except Exception as e:
-            log(f"HATA: {str(e)}")
-            STATUS["errors"].append({"quote": quote.get("text","")[:50], "error": str(e)})
-
-    generate_dashboard()
-    STATUS["running"] = False
-    STATUS["current"] = None
-    log(f"Tamamlandı! {len(STATUS['completed'])} video, {len(STATUS['errors'])} hata")
-
-
 # ── Ana Endpoint'ler ──────────────────────────────────────────────
 
 @app.route("/")
@@ -270,124 +176,6 @@ def api_tarih_status():
     return jsonify(TARIH_STATUS)
 
 
-@app.route("/api/quotes")
-def api_quotes():
-    return jsonify(load_json("quotes.json", []))
-
-
-@app.route("/api/refresh-quotes", methods=["POST"])
-def api_refresh():
-    try:
-        quotes = refresh_quotes(force=True)
-        generate_dashboard()
-        return jsonify({"ok": True, "count": len(quotes)})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/api/produce", methods=["POST"])
-def api_produce():
-    if STATUS["running"]:
-        return jsonify({"ok": False, "error": "Zaten çalışıyor"}), 400
-    data = request.json or {}
-    queue = data.get("queue", [])
-    if not queue:
-        return jsonify({"ok": False, "error": "Söz listesi boş"}), 400
-    STATUS["queue"] = queue
-    STATUS["log"]   = []
-    t = threading.Thread(
-        target=produce_videos,
-        args=(queue, data.get("auto_upload",False), data.get("scheduled_hour",None)),
-        daemon=True
-    )
-    t.start()
-    return jsonify({"ok": True, "message": f"{len(queue)} video üretimi başladı"})
-
-
-@app.route("/api/stop", methods=["POST"])
-def api_stop():
-    STATUS["running"] = False
-    log("Durdurma sinyali gönderildi")
-    return jsonify({"ok": True})
-
-
-# ── Söz Endpoint'leri ─────────────────────────────────────────────
-
-@app.route("/api/delete-quote", methods=["POST"])
-def api_delete_quote():
-    data = request.json or {}
-    qid  = data.get("id")
-    if not qid:
-        return jsonify({"ok": False, "error": "ID gerekli"}), 400
-    try:
-        delete_quote(qid)
-        generate_dashboard()
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/api/add-quote", methods=["POST"])
-def api_add_quote():
-    data = request.json or {}
-    text = (data.get("text") or "").strip()
-    if not text:
-        return jsonify({"ok": False, "error": "Söz metni boş"}), 400
-    try:
-        from quotes_manager import load_quotes, save_quotes
-        quotes = load_quotes()
-        new_q  = {
-            "id":         "q_manual_" + datetime.now().strftime("%Y%m%d%H%M%S"),
-            "text":       text,
-            "author":     data.get("author","Anonim"),
-            "category":   data.get("category","motivasyon"),
-            "source":     "manuel",
-            "viral_score": int(data.get("viral_score",7)),
-            "original":   None,
-            "used":       False,
-            "used_at":    None,
-            "video_url":  None,
-            "created_at": datetime.now().isoformat()
-        }
-        quotes.insert(0, new_q)
-        save_quotes(quotes)
-        generate_dashboard()
-        return jsonify({"ok": True, "id": new_q["id"]})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-# ── Sözler Kanalı — Üretilen Videolar ─────────────────────────────
-
-@app.route("/api/local-videos")
-def api_local_videos():
-    uploaded = get_uploaded_paths("sozler")
-    queued   = get_queued_paths("sozler")
-    videos   = []
-    for f in sorted(glob.glob("output/sozler/quote_*.mp4"), reverse=True):
-        if f in uploaded or f in queued:
-            continue
-        size_mb = round(os.path.getsize(f)/(1024*1024), 1)
-        basename = os.path.basename(f)
-        meta = {}
-        mp = f.replace(".mp4",".json")
-        if os.path.exists(mp):
-            try:
-                with open(mp,"r",encoding="utf-8") as mf: meta = json.load(mf)
-            except: pass
-        videos.append({
-            "path": f, "filename": basename, "size_mb": size_mb,
-            "url": f"/output/sozler/{basename}",
-            "title":      meta.get("title",""),
-            "description":meta.get("description",""),
-            "tags":       meta.get("tags",[]),
-            "quote_text": meta.get("quote_text",""),
-            "author":     meta.get("author",""),
-            "quote_id":   meta.get("quote_id",""),
-        })
-    return jsonify({"ok": True, "videos": videos})
-
-
 @app.route("/api/upload-local", methods=["POST"])
 def api_upload_local():
     if STATUS["running"]:
@@ -395,12 +183,12 @@ def api_upload_local():
     data           = request.json or {}
     video_path     = data.get("video_path","")
     scheduled_hour = data.get("scheduled_hour", None)
-    channel        = data.get("channel","sozler")
+    channel        = data.get("channel","tarih")
     if not video_path or not os.path.exists(video_path):
         return jsonify({"ok": False, "error": "Dosya bulunamadı"}), 400
 
     # Kanal bazlı STATUS
-    _status = TARIH_STATUS if channel == "tarih" else STATUS
+    _status = TARIH_STATUS if channel == "tarih" else (NOTES_STATUS if channel == "notesofhistory" else STATUS)
 
     def do_upload():
         from channel_config import CHANNELS
@@ -418,7 +206,7 @@ def api_upload_local():
             mp    = video_path.replace(".mp4",".json")
             if os.path.exists(mp):
                 with open(mp,"r",encoding="utf-8") as mf: meta = json.load(mf)
-            ch_id = CHANNELS.get(channel, {}).get("channel_id") or CHANNELS.get("sozler",{}).get("channel_id")
+            ch_id = CHANNELS.get(channel, {}).get("channel_id")
             log(f"Kanal: {channel} ID: {ch_id}", channel)
             cp = {
                 "title":       (meta.get("title") or os.path.basename(video_path))[:90],
@@ -430,8 +218,6 @@ def api_upload_local():
             url    = result["url"]
             add_to_history(channel, video_path, result.get("video_id",""), url, cp["title"])
             remove_from_queue_by_path(channel, video_path)
-            qid = meta.get("quote_id","")
-            if qid: mark_quote_used(qid, url)
             log(f"Yuklendi: {url}", channel)
             _status["completed"].append({"quote_text": cp["title"], "video_url": url})
             generate_dashboard()
@@ -448,7 +234,7 @@ def api_upload_local():
 
 @app.route("/api/queue")
 def api_queue():
-    channel = request.args.get("channel","sozler")
+    channel = request.args.get("channel","tarih")
     queue   = load_json(f"data/{channel}_queue.json", [])
     stats   = {
         "bekliyor":   len([q for q in queue if q.get("status")=="bekliyor"]),
@@ -464,7 +250,7 @@ def api_queue():
 @app.route("/api/queue/add", methods=["POST"])
 def api_queue_add():
     data    = request.json or {}
-    channel = data.get("channel","sozler")
+    channel = data.get("channel","tarih")
     try:
         queue = load_json(f"data/{channel}_queue.json", [])
         item  = {
@@ -490,7 +276,7 @@ def api_queue_add():
 @app.route("/api/queue/remove", methods=["POST"])
 def api_queue_remove():
     data    = request.json or {}
-    channel = data.get("channel","sozler")
+    channel = data.get("channel","tarih")
     qid     = data.get("id","")
     try:
         queue = load_json(f"data/{channel}_queue.json", [])
@@ -505,7 +291,7 @@ def api_queue_remove():
 @app.route("/api/queue/reorder", methods=["POST"])
 def api_queue_reorder():
     data    = request.json or {}
-    channel = data.get("channel","sozler")
+    channel = data.get("channel","tarih")
     order   = data.get("order",[])
     try:
         queue  = load_json(f"data/{channel}_queue.json", [])
@@ -514,22 +300,6 @@ def api_queue_reorder():
         remaining = [q for q in queue if q["id"] not in order]
         save_json(f"data/{channel}_queue.json", reordered + remaining)
         return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/api/queue/upload-now", methods=["POST"])
-def api_queue_upload_now():
-    if STATUS["running"]:
-        return jsonify({"ok": False, "error": "Zaten çalışıyor"}), 400
-    data = request.json or {}
-    try:
-        from upload_scheduler import do_scheduled_upload, is_company_network
-        if is_company_network():
-            return jsonify({"ok": False, "error": "Şirket ağında yükleme yapılamaz"}), 400
-        STATUS["log"] = []
-        threading.Thread(target=do_scheduled_upload, daemon=True).start()
-        return jsonify({"ok": True, "message": "Yükleme başladı"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
@@ -545,168 +315,6 @@ def api_network_status():
         return jsonify({"ok": True, "ip": ip, "is_company": company, "can_upload": not company})
     except Exception as e:
         return jsonify({"ok": True, "ip": "?", "is_company": False, "can_upload": True})
-
-
-# ── Canlı İstatistikler ───────────────────────────────────────────
-
-@app.route("/api/live-stats")
-def api_live_stats():
-    try:
-        from uploader import get_authenticated_service
-        history = load_json("data/sozler_history.json", []) or load_json("upload_history.json", [])
-        if not history:
-            return jsonify({"ok": True, "stats": {}})
-        youtube   = get_authenticated_service()
-        video_ids = [h["video_id"] for h in history if h.get("video_id")]
-        if not video_ids:
-            return jsonify({"ok": True, "stats": {}})
-        stats = {}
-        for i in range(0, len(video_ids), 50):
-            batch = video_ids[i:i+50]
-            resp  = youtube.videos().list(part="statistics,snippet", id=",".join(batch)).execute()
-            for item in resp.get("items",[]):
-                s = item.get("statistics",{})
-                stats[item["id"]] = {
-                    "title":    item["snippet"]["title"],
-                    "views":    int(s.get("viewCount",0)),
-                    "likes":    int(s.get("likeCount",0)),
-                    "comments": int(s.get("commentCount",0)),
-                }
-        return jsonify({"ok": True, "stats": stats})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-# ── Yol Haritası ──────────────────────────────────────────────────
-
-@app.route("/api/roadmap")
-def api_roadmap():
-    """Her iki kanal için analytics analizi ve yol haritası üretir."""
-    try:
-        import httpx
-        import anthropic
-        from config import ANTHROPIC_API_KEY
-
-        # Sözler kanalı verilerini topla
-        sozler_hist  = load_json("data/sozler_history.json", []) or load_json("upload_history.json", [])
-        sozler_used  = load_json("used_quotes.json", [])
-        sozler_del   = load_json("deleted_quotes.json", [])
-        sozler_queue = load_json("data/sozler_queue.json", [])
-
-        # Tarih kanalı verilerini topla
-        tarih_hist    = load_json("data/tarih_history.json", [])
-        tarih_anal    = load_json("data/tarih_analytics.json", {})
-
-        # Canlı stats topla
-        live_stats = {}
-        try:
-            from uploader import get_authenticated_service
-            all_ids = [h["video_id"] for h in sozler_hist + tarih_hist if h.get("video_id")]
-            if all_ids:
-                yt = get_authenticated_service()
-                for i in range(0, len(all_ids), 50):
-                    batch = all_ids[i:i+50]
-                    resp = yt.videos().list(part="statistics,snippet", id=",".join(batch)).execute()
-                    for item in resp.get("items",[]):
-                        s = item.get("statistics",{})
-                        live_stats[item["id"]] = {
-                            "title":    item["snippet"]["title"],
-                            "views":    int(s.get("viewCount",0)),
-                            "likes":    int(s.get("likeCount",0)),
-                            "comments": int(s.get("commentCount",0)),
-                        }
-        except: pass
-
-        # Prompt için veri hazırla
-        sozler_summary = {
-            "total_videos":   len(sozler_hist),
-            "total_views":    sum(live_stats.get(h.get("video_id",""),{}).get("views",0) for h in sozler_hist),
-            "total_likes":    sum(live_stats.get(h.get("video_id",""),{}).get("likes",0) for h in sozler_hist),
-            "used_quotes":    len(sozler_used),
-            "deleted_quotes": len(sozler_del),
-            "queue_size":     len([q for q in sozler_queue if q.get("status")=="bekliyor"]),
-            "top_videos":     sorted(
-                [{"title":h.get("title",""), "views":live_stats.get(h.get("video_id",""),{}).get("views",0)} for h in sozler_hist],
-                key=lambda x: x["views"], reverse=True
-            )[:5],
-        }
-
-        tarih_summary = {
-            "total_videos": len(tarih_hist),
-            "total_views":  sum(live_stats.get(h.get("video_id",""),{}).get("views",0) for h in tarih_hist),
-            "formats":      tarih_anal.get("formats",{}),
-        }
-
-        http   = httpx.Client(verify=False)
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, http_client=http)
-
-        prompt = f"""
-Sen bir YouTube kanal stratejisti ve veri analistisin.
-
-SÖZLER KANALI VERİLERİ:
-{json.dumps(sozler_summary, ensure_ascii=False, indent=2)}
-
-TARİH KANALI VERİLERİ:
-{json.dumps(tarih_summary, ensure_ascii=False, indent=2)}
-
-Bu verilere dayanarak her iki kanal için detaylı bir yol haritası ve aksiyon planı üret.
-
-Sadece JSON döndür:
-{{
-  "sozler": {{
-    "ozet": "Kısa değerlendirme (2-3 cümle)",
-    "guclu_yonler": ["güçlü yön 1", "güçlü yön 2"],
-    "zayif_yonler": ["zayıf yön 1", "zayıf yön 2"],
-    "hemen_yapilacaklar": [
-      {{"oncelik": "YUKSEK", "aksiyon": "aksiyon açıklaması", "beklenen_etki": "etki"}}
-    ],
-    "bu_hafta": [
-      {{"aksiyon": "aksiyon", "detay": "detay"}}
-    ],
-    "bu_ay": [
-      {{"aksiyon": "aksiyon", "detay": "detay"}}
-    ],
-    "icerik_onerileri": ["öneri 1", "öneri 2", "öneri 3"],
-    "optimizasyon_ipuclari": ["ipucu 1", "ipucu 2"]
-  }},
-  "tarih": {{
-    "ozet": "Kısa değerlendirme",
-    "en_iyi_format": "hangi format daha iyi çalışıyor ve neden",
-    "hemen_yapilacaklar": [
-      {{"oncelik": "YUKSEK", "aksiyon": "aksiyon", "beklenen_etki": "etki"}}
-    ],
-    "bu_hafta": [{{"aksiyon": "aksiyon", "detay": "detay"}}],
-    "bu_ay": [{{"aksiyon": "aksiyon", "detay": "detay"}}],
-    "icerik_onerileri": ["konu önerisi 1", "konu önerisi 2", "konu önerisi 3"],
-    "optimizasyon_ipuclari": ["ipucu 1", "ipucu 2"]
-  }},
-  "genel": {{
-    "toplam_kanal_degerlendirme": "genel değerlendirme",
-    "kritik_aksiyon": "en acil yapılması gereken şey"
-  }},
-  "guncellendi": "{datetime.now().strftime('%d.%m.%Y %H:%M')}"
-}}
-"""
-
-        msg = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=4000,
-            messages=[{"role":"user","content":prompt}]
-        )
-        text = msg.content[0].text.strip()
-        if "```json" in text: text = text.split("```json")[1].split("```")[0]
-        elif "```" in text:   text = text.split("```")[1].split("```")[0]
-        roadmap = json.loads(text.strip())
-
-        # Cache'e kaydet
-        save_json("data/roadmap_cache.json", roadmap)
-        return jsonify({"ok": True, "roadmap": roadmap})
-    except Exception as e:
-        # Cache'den döndür
-        cached = load_json("data/roadmap_cache.json", {})
-        if cached:
-            return jsonify({"ok": True, "roadmap": cached, "cached": True})
-        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ── Tarih Kanalı ──────────────────────────────────────────────────
@@ -1137,10 +745,6 @@ def api_tarih_local_videos():
 
 # ── Static dosyalar ───────────────────────────────────────────────
 
-@app.route("/output/sozler/<path:filename>")
-def serve_sozler_output(filename):
-    return send_from_directory("output/sozler", filename)
-
 
 @app.route("/output/tarih/<path:filename>")
 def serve_tarih_output(filename):
@@ -1150,8 +754,7 @@ def serve_tarih_output(filename):
 # Eski output yolu uyumluluğu
 @app.route("/output/<path:filename>")
 def serve_output(filename):
-    # Önce sozler'de ara
-    for d in ["output/sozler", "output/tarih", "output"]:
+    for d in ["output/tarih", "output/notesofhistory", "output"]:
         p = os.path.join(d, filename)
         if os.path.exists(p):
             return send_from_directory(d, filename)
@@ -1213,156 +816,8 @@ Sadece JSON döndür:
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-# ── Viral Kanal Endpoint'leri ──────────────────────────────────────
-
-VIRAL_STATUS = {"running":False,"log":[],"completed":[],"errors":[]}
-
-@app.route("/api/viral/status")
-def api_viral_status():
-    return jsonify(VIRAL_STATUS)
-
-@app.route("/api/viral/check", methods=["POST"])
-def api_viral_check():
-    """Yeni tweet'leri kontrol et ve kuyruğa ekle."""
-    try:
-        data  = request.json or {}
-        force = data.get("force", False)
-        from viral_scraper import check_new_tweets, add_to_viral_queue
-        new_tweets = check_new_tweets(force=force)
-        added = add_to_viral_queue(new_tweets) if new_tweets else 0
-        return jsonify({"ok":True,"new":len(new_tweets),"added":added,"force":force})
-    except Exception as e:
-        return jsonify({"ok":False,"error":str(e)}),500
-
-@app.route("/api/viral/queue")
-def api_viral_queue():
-    queue = load_json("data/viral_queue.json",[])
-    visible = [q for q in queue if q.get("status") not in ("yuklendi",)]
-    return jsonify({"ok":True,"queue":visible})
-
-@app.route("/api/viral/produce", methods=["POST"])
-def api_viral_produce():
-    """Kuyruktaki tweet'leri video yap."""
-    if VIRAL_STATUS["running"]:
-        return jsonify({"ok":False,"error":"Zaten çalışıyor"}),400
-    
-    data      = request.json or {}
-    item_ids  = data.get("ids",[])  # Boşsa tüm bekleyenler
-    auto_upload = data.get("auto_upload", False)
-
-    def do_produce():
-        VIRAL_STATUS["running"]   = True
-        VIRAL_STATUS["log"]       = []
-        VIRAL_STATUS["completed"] = []
-        VIRAL_STATUS["errors"]    = []
-
-        queue = load_json("data/viral_queue.json",[])
-        items = [q for q in queue if q.get("status")=="bekliyor"]
-        if item_ids:
-            items = [q for q in items if q.get("id") in item_ids]
-
-        log(f"Viral üretim: {len(items)} tweet", "viral")
-        
-        for item in items:
-            try:
-                from viral_video_generator import create_viral_video
-                ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
-                out = f"output/viral/viral_{ts}.mp4"
-                
-                vpath = create_viral_video(item, out)
-                if not vpath:
-                    log(f"Video yok, atlandı: {item['text'][:40]}", "viral")
-                    item["status"] = "atlandi"
-                    continue
-
-                item["video_path"] = vpath
-                item["status"]     = "uretildi"
-                log(f"Hazır: {os.path.basename(vpath)}", "viral")
-
-                if auto_upload:
-                    try:
-                        from uploader import run_upload
-                        from channel_config import VIRAL_CHANNEL_ID
-                        h,m = map(int, UPLOAD_TIME.split(":"))
-                        sched = make_scheduled_time(h,m)
-                        meta = load_json(vpath.replace(".mp4",".json"),{})
-                        cp = {
-                            "title":       meta.get("title",item["text"][:90]),
-                            "description": meta.get("description","#viral #shorts"),
-                            "tags":        meta.get("tags",["viral","shorts"]),
-                            "hashtags":    meta.get("hashtags",["#viral"]),
-                        }
-                        result = run_upload(cp, vpath, scheduled_time=sched,
-                                           channel_id=VIRAL_CHANNEL_ID, channel="viral")
-                        item["status"]    = "yuklendi"
-                        item["video_url"] = result["url"]
-                        add_to_history("viral", vpath, result.get("video_id",""),
-                                      result["url"], cp["title"])
-                        log(f"Yüklendi: {result['url']}", "viral")
-                    except Exception as e:
-                        log(f"Yükleme hatası: {str(e)}", "viral")
-
-                VIRAL_STATUS["completed"].append({
-                    "text": item["text"][:60],
-                    "video_path": vpath,
-                    "video_url": item.get("video_url"),
-                })
-            except Exception as e:
-                log(f"Hata: {str(e)}", "viral")
-                item["status"] = "hata"
-                VIRAL_STATUS["errors"].append({"text":item["text"][:40],"error":str(e)})
-
-        save_json("data/viral_queue.json", queue)
-        generate_dashboard()
-        VIRAL_STATUS["running"] = False
-        log(f"Tamamlandı: {len(VIRAL_STATUS['completed'])} video", "viral")
-
-    threading.Thread(target=do_produce, daemon=True).start()
-    return jsonify({"ok":True})
-
-@app.route("/api/viral/local-videos")
-def api_viral_local_videos():
-    uploaded_set = set(get_uploaded_paths("viral"))
-    hist_map = {h.get("video_path",""):h for h in load_json("data/viral_history.json",[])}
-    videos = []
-    for f in sorted(glob.glob("output/viral/viral_*.mp4"), reverse=True):
-        size_mb = round(os.path.getsize(f)/(1024*1024),1)
-        basename = os.path.basename(f)
-        meta = {}
-        mp = f.replace(".mp4",".json")
-        if os.path.exists(mp):
-            try:
-                with open(mp,"r",encoding="utf-8") as mf: meta=json.load(mf)
-            except: pass
-        h = hist_map.get(f,{})
-        videos.append({
-            "path":f,"filename":basename,"size_mb":size_mb,
-            "url":f"/output/viral/{basename}",
-            "title":meta.get("title",""),
-            "source":meta.get("source",""),
-            "generated_at":meta.get("generated_at",""),
-            "uploaded": f in uploaded_set,
-            "video_url": h.get("url"),
-        })
-    return jsonify({"ok":True,"videos":videos})
-
-@app.route("/output/viral/<path:filename>")
-def serve_viral_output(filename):
-    return send_from_directory("output/viral", filename)
-
 NIGHTLY_SLOTS = {
-    # Sozler: 01->08, 02->12, 03->20
-    1: ("sozler", None,  8),
-    2: ("sozler", None, 12),
-    3: ("sozler", None, 20),
-    # Viral: 01:30->08, 02:30->12, 03:30->20
-    11: ("viral", None,  8),
-    12: ("viral", None, 12),
-    13: ("viral", None, 20),
-    # Tarih: 01:00 uret -> 09:00 yayinla (TR)
-    # Notes: 01:00 uret -> 20:00 EST = 03:00 TR (+1 gun degil, ayni sabah)
-    # Cozum: Tarih ve Notes uretimini gece 01:00'a tasi, sozlerden 30dk sonra
-    # Ama sozler 01'de — tarih 23:00'da uret -> 09:00 yayinla
+    # Tarih: gece uret -> sabah yayinla (TR)
     23: ("tarih",  "tarihtebugün",    9),
     22: ("tarih",  "gizemliolaylar", 15),
     21: ("tarih",  "unluliderlere",  19),
@@ -1445,71 +900,13 @@ def run_nightly_production(slot_hour=None):
             send_telegram("Gece Tarih hatasi: %s" % str(e)[:150])
             import traceback; traceback.print_exc()
 
-    def produce_sozler_slot():
-        try:
-            from quotes_manager import get_next_quote, mark_quote_used
-            from quote_video_generator import create_quote_video
-            from uploader import run_upload
-            from channel_config import SOZLER_CHANNEL_ID
-            quote = get_next_quote()
-            if not quote:
-                send_telegram("Sozler: kota yok")
-                return
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            out = "output/sozler/quote_%s.mp4" % ts
-            Path("output/sozler").mkdir(parents=True, exist_ok=True)
-            create_quote_video(quote, out)
-            desc = quote.get("text","") + "\n\n#motivasyon #shorts"
-            meta = {"title": quote.get("text","")[:85] + " - " + quote.get("author","Anonim"),
-                    "description": desc,
-                    "tags": ["motivasyon","ozlusoz","shorts"],
-                    "hashtags": ["#motivasyon","#shorts"]}
-            sched = safe_sched(publish_hour)
-            result = run_upload(meta, out, scheduled_time=sched, channel_id=SOZLER_CHANNEL_ID, channel="sozler")
-            mark_quote_used(quote["id"], result["url"])
-            add_to_history("sozler", out, result.get("video_id",""), result["url"], meta["title"])
-            send_telegram("Sozler %02d:00 -> %s" % (publish_hour, result["url"]))
-        except Exception as e:
-            send_telegram("Gece Sozler hatasi: %s" % str(e)[:150])
-
-    def produce_viral_slot():
-        try:
-            from viral_scraper import check_new_tweets, add_to_viral_queue, load_queue
-            from viral_video_generator import create_viral_video
-            from uploader import run_upload
-            from channel_config import VIRAL_CHANNEL_ID
-            new_t = check_new_tweets(force=True)
-            if new_t: add_to_viral_queue(new_t)
-            queue = load_queue()
-            pending = [q for q in queue if q.get("status")=="bekliyor"]
-            if not pending:
-                send_telegram("Viral: bekleyen icerik yok")
-                return
-            item = pending[0]
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            out = "output/viral/viral_%s.mp4" % ts
-            Path("output/viral").mkdir(parents=True, exist_ok=True)
-            vpath = create_viral_video(item, out)
-            if not vpath: return
-            meta = load_json(vpath.replace(".mp4",".json"), {})
-            sched = safe_sched(publish_hour)
-            result = run_upload({"title": meta.get("title", item["text"][:90]),
-                "description": meta.get("description","#viral #shorts"),
-                "tags": meta.get("tags",["viral"]),
-                "hashtags": meta.get("hashtags",["#viral"])},
-                vpath, scheduled_time=sched, channel_id=VIRAL_CHANNEL_ID, channel="viral")
-            add_to_history("viral", vpath, result.get("video_id",""), result["url"], meta.get("title",""))
-            send_telegram("Viral %02d:00 -> %s" % (publish_hour, result["url"]))
-        except Exception as e:
-            send_telegram("Gece Viral hatasi: %s" % str(e)[:150])
-
-    fn = {"tarih": produce_tarih_slot, "sozler": produce_sozler_slot, "viral": produce_viral_slot}.get(channel)
+    fn = {"tarih": produce_tarih_slot}.get(channel)
     if fn:
         _thr.Thread(target=fn, daemon=True).start()
 
 
 if __name__ == "__main__":
-    for d in ["output/sozler", "output/tarih", "output/notesofhistory", "data", "music_cache"]:
+    for d in ["output/tarih", "output/notesofhistory", "data", "music_cache"]:
         Path(d).mkdir(parents=True, exist_ok=True)
 
     # Token'ları env variable'lardan oluştur (Railway için)
@@ -1528,15 +925,13 @@ if __name__ == "__main__":
     generate_dashboard()
 
     try:
-        from upload_scheduler import start_scheduler, is_company_network, get_local_ip
+        from upload_scheduler import is_company_network, get_local_ip
         ip = get_local_ip()
         company = is_company_network()
         print(f"  Yerel IP: {ip}")
         print(f"  Ağ: {'Şirket ağı (yükleme kapalı)' if company else 'Ev/dış ağ (yükleme aktif)'}")
-        scheduler = start_scheduler()
-        print(f"  Zamanlayıcı: her gün {UPLOAD_TIME}")
     except Exception as e:
-        print(f"  Zamanlayıcı başlatılamadı: {str(e)}")
+        print(f"  Ağ durumu okunamadı: {str(e)}")
 
     # Gece üretim zamanlayıcısı (04:00, 05:00, 06:00)
     try:
@@ -1544,21 +939,12 @@ if __name__ == "__main__":
         import pytz
         tz = pytz.timezone("Europe/Istanbul")
         night_scheduler = BackgroundScheduler(timezone=tz)
-        # Sozler: 01:00, 02:00, 03:00
-        night_scheduler.add_job(lambda: run_nightly_production(1),  "cron", hour=1,  minute=0,  id="night_01")
-        night_scheduler.add_job(lambda: run_nightly_production(2),  "cron", hour=2,  minute=0,  id="night_02")
-        night_scheduler.add_job(lambda: run_nightly_production(3),  "cron", hour=3,  minute=0,  id="night_03")
-        # Viral: 01:30, 02:30, 03:30
-        night_scheduler.add_job(lambda: run_nightly_production(11), "cron", hour=1,  minute=30, id="night_11")
-        night_scheduler.add_job(lambda: run_nightly_production(12), "cron", hour=2,  minute=30, id="night_12")
-        night_scheduler.add_job(lambda: run_nightly_production(13), "cron", hour=3,  minute=30, id="night_13")
         # Tarih: 21:00->19:00, 22:00->15:00, 23:00->09:00 (ayni gece uret, sabah yayinla)
         night_scheduler.add_job(lambda: run_nightly_production(21), "cron", hour=21, minute=0,  id="night_21")
         night_scheduler.add_job(lambda: run_nightly_production(22), "cron", hour=22, minute=0,  id="night_22")
         night_scheduler.add_job(lambda: run_nightly_production(23), "cron", hour=23, minute=0,  id="night_23")
         night_scheduler.start()
-        print("  Sozler: 01:00(8), 02:00(12), 03:00(20) | Viral: 01:30(8), 02:30(12), 03:30(20) | Tarih: 04:00(9), 05:00(15), 06:00(19)")
-        print("  🌙 Gece zamanlayıcısı: 04:00, 05:00, 06:00")
+        print("  🌙 Gece zamanlayıcısı: Tarih 21:00(19:00), 22:00(15:00), 23:00(09:00)")
     except Exception as e:
         print(f"  ⚠ Gece zamanlayıcısı kurulamadı: {e}")
 
