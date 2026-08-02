@@ -563,9 +563,12 @@ function loadNotesVideos(){
 }
 
 // ── Analiz ────────────────────────────────────────────────────────
+var tarihChart = null;
+
 async function loadTarihAnaliz(){
   try{
     // Canlı YouTube istatistikleri
+    var statsMap = {};
     if(IS_SRV){try{
       var ar=await fetch('/api/analytics/tarih');var ad=await ar.json();
       if(ad.ok&&ad.total){
@@ -574,6 +577,7 @@ async function loadTarihAnaliz(){
         document.getElementById('t_tl').textContent=fmt(ad.total.likes);
         document.getElementById('t_te').textContent='%'+(ad.total.views>0?((ad.total.likes+ad.total.comments)/ad.total.views*100).toFixed(1):0);
       }
+      if(ad.ok&&ad.stats) statsMap = ad.stats;
     }catch(e){}}
     var r=await fetch('/api/tarih/local-videos');var d=await r.json();
     var videos=d.videos||[];
@@ -585,6 +589,33 @@ async function loadTarihAnaliz(){
         '<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(v.title||v.filename)+'</span>'+
         (v.video_url?'<a href="'+v.video_url+'" target="_blank" style="color:var(--notes2);font-size:11px">İzle</a>':'')+'</div>';
     }).join('')||'<div class="empty">Veri yok</div>';
+
+    // Format performansı — video başına canlı izlenme, formata göre grupla
+    var byFmt = {};
+    videos.forEach(function(v){
+      var f = v.format || 'diğer';
+      var s = statsMap[v.video_id||''] || {};
+      if(!byFmt[f]) byFmt[f] = {total:0, count:0};
+      byFmt[f].total += s.views||0;
+      byFmt[f].count += 1;
+    });
+    var labels = Object.keys(byFmt);
+    var canvas = document.getElementById('t_fc');
+    if(!labels.length){
+      if(tarihChart){ tarihChart.destroy(); tarihChart=null; }
+      var ctx0 = canvas.getContext('2d');
+      ctx0.clearRect(0,0,canvas.width,canvas.height);
+      return;
+    }
+    var avgViews = labels.map(function(f){ return byFmt[f].count ? Math.round(byFmt[f].total/byFmt[f].count) : 0; });
+    if(typeof Chart === 'undefined') return;
+    if(tarihChart) tarihChart.destroy();
+    tarihChart = new Chart(canvas.getContext('2d'), {
+      type:'bar',
+      data:{labels:labels, datasets:[{label:'Ort. İzlenme', data:avgViews, backgroundColor:'rgba(217,119,6,.6)', borderColor:'#d97706', borderWidth:1}]},
+      options:{responsive:true, plugins:{legend:{display:false}},
+        scales:{x:{grid:{color:'#1c1d30'},ticks:{color:'#8082a0'}}, y:{grid:{color:'#1c1d30'},ticks:{color:'#8082a0'}}}}
+    });
   }catch(e){}
 }
 

@@ -25,6 +25,8 @@ Turkish content:
 
 Return ONLY a JSON object with the same structure but all text fields translated to English.
 Keep all non-text fields (colors, format, etc.) unchanged.
+IMPORTANT: This is a faithful translation, not a rewrite — do not add, remove, or change any fact,
+date, name, or number. Translate meaning exactly as given.
 Make the title catchy and SEO-friendly for US YouTube audience.
 The last segment narration MUST end with a viewer engagement question like "What do you think? Drop it in the comments!"
 Add a "us_trending_hashtags" field with these US-trending tags: ["#HistoryShorts","#DidYouKnow","#HistoryFacts","#LearnOnTikTok","#HistoryTok","#AmazingFacts","#MindBlown","#TodayILearned","#HistoryBuff","#ShortsHistory"]
@@ -119,6 +121,9 @@ def generate_english_history_content(topic: str = None, format_type: str = "time
             if english:
                 english["channel"] = "notesofhistory"
                 english["generated_at"] = datetime.now().isoformat()
+                # Kaynak bilgisi çeviriden bağımsız — aynen taşınır
+                english["verified"] = turkish_content.get("verified", False)
+                english["source_url"] = turkish_content.get("source_url")
                 english["tags"] = list(set(
                     english.get("tags", []) +
                     ["history","shorts","historical","facts","historyfacts","notesofhistory"]
