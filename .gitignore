@@ -1,0 +1,15 @@
+# Secrets — OAuth tokens & credentials
+token*.json
+credentials*.json
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Üretilen çıktılar
+output/
+data/
+music_cache/
+dashboard.html
+*.log

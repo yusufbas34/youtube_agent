@@ -10,17 +10,9 @@ def load_json(path):
     return None
 
 def generate_dashboard():
-    upload = (load_json("data/sozler_history.json") or
-              load_json("upload_history.json") or [])
     data = {
-        "upload":     upload,
-        "perf":       load_json("performance_report.json") or {},
-        "trend":      load_json("trend_analysis.json")     or {},
-        "content":    load_json("content_plan.json")       or {},
-        "quotes":     load_json("quotes.json")              or [],
         "roadmap":    load_json("data/roadmap_cache.json")  or {},
         "tarih_hist": load_json("data/tarih_history.json")  or [],
-        "viral_hist": load_json("data/viral_history.json")  or [],
         "notes_hist": load_json("data/notesofhistory_history.json") or [],
         "generated_at": datetime.now().strftime("%d.%m.%Y %H:%M")
     }

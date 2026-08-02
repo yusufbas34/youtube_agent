@@ -6,6 +6,8 @@ Her kanal için özel ses ve duygu ayarları.
 import os, asyncio, ssl
 
 CHANNEL_VOICE_SETTINGS = {
+    # "sozler" varsayılan/fallback ses ayarı — notesofhistory de bunu kullanıyor
+    # (CHANNEL_VOICE_SETTINGS'te kendi anahtarı yok, .get() ile buraya düşüyor)
     "sozler": {
         "voice_id":          "t8fOU8zfPVWFYN34BllH",
         "model_id":          "eleven_multilingual_v2",
@@ -20,14 +22,6 @@ CHANNEL_VOICE_SETTINGS = {
         "stability":          0.50,
         "similarity_boost":   0.75,
         "style":              0.60,
-        "use_speaker_boost":  True,
-    },
-    "viral": {
-        "voice_id":          "8LQS4H6IYf1unP46qbKD",
-        "model_id":          "eleven_multilingual_v2",
-        "stability":          0.30,
-        "similarity_boost":   0.85,
-        "style":              0.70,
         "use_speaker_boost":  True,
     },
 }
@@ -86,6 +80,6 @@ def generate_tts_with_fallback(text: str, path: str, channel: str = "sozler") ->
     ok = generate_elevenlabs_tts(text, path, channel)
     if not ok:
         print(f"  → Edge TTS yedek ({channel})")
-        rate = "+10%" if channel == "viral" else "+0%"
+        rate = "+0%"
         asyncio.run(_edge_tts_fallback(text, path, rate))
     return path

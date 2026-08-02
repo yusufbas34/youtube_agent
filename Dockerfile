@@ -22,7 +22,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
-RUN mkdir -p output/sozler output/tarih output/viral data music_cache
+RUN mkdir -p output/tarih output/notesofhistory data music_cache
 
 EXPOSE 5051
 CMD ["python", "dashboard_server.py"]

@@ -189,9 +189,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
     <div class="logo">⚡ AI Agent</div>
     <div class="ch-tabs">
-      <button class="ch-tab active" data-ch="sozler" onclick="switchCh('sozler')">💬 Sözler</button>
-      <button class="ch-tab" data-ch="tarih" onclick="switchCh('tarih')">📜 Tarih</button>
-      <button class="ch-tab" data-ch="viral" onclick="switchCh('viral')">⚡ Viral</button>
+      <button class="ch-tab active" data-ch="tarih" onclick="switchCh('tarih')">📜 Tarih</button>
       <button class="ch-tab" data-ch="notes" onclick="switchCh('notes')">📖 Notes</button>
     </div>
   </div>
@@ -202,151 +200,21 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 </div>
 
 <!-- NAVS -->
-<div id="nav_sozler" class="nav" data-ch="sozler">
-  <button class="nav-btn active" onclick="goPage('sozler_uretim')">🎬 Üretim</button>
-  <button class="nav-btn" onclick="goPage('sozler_havuz')">📝 Söz Havuzu</button>
-  <button class="nav-btn" onclick="goPage('sozler_videolar')">🎥 Videolar</button>
-  <button class="nav-btn" onclick="goPage('sozler_analiz')">📊 Analiz</button>
-  <button class="nav-btn" onclick="goPage('sozler_roadmap')">🗺️ Yol Haritası</button>
-</div>
-<div id="nav_tarih" class="nav" data-ch="tarih" style="display:none">
+<div id="nav_tarih" class="nav" data-ch="tarih">
   <button class="nav-btn active" onclick="goPage('tarih_uretim')">🎬 Üretim</button>
   <button class="nav-btn" onclick="goPage('tarih_videolar')">🎥 Videolar</button>
   <button class="nav-btn" onclick="goPage('tarih_analiz')">📊 Analiz</button>
   <button class="nav-btn" onclick="goPage('tarih_roadmap')">🗺️ Yol Haritası</button>
-</div>
-<div id="nav_viral" class="nav" data-ch="viral" style="display:none">
-  <button class="nav-btn active" onclick="goPage('viral_uretim')">🎬 Üretim</button>
-  <button class="nav-btn" onclick="goPage('viral_videolar')">🎥 Videolar</button>
-  <button class="nav-btn" onclick="goPage('viral_analiz')">📊 Analiz</button>
 </div>
 <div id="nav_notes" class="nav" data-ch="notes" style="display:none">
   <button class="nav-btn active" onclick="goPage('notes_videolar')">🎥 Videolar</button>
   <button class="nav-btn" onclick="goPage('notes_analiz')">📊 Analiz</button>
 </div>
 
-<!-- ═══════════════════════════════════════════════ SÖZLER ═══ -->
-
-<!-- SÖZLER: ÜRETİM + HAVUZ -->
-<div id="sozler_uretim" class="page active">
-  <div class="g2">
-    <!-- SOL: Üretim -->
-    <div>
-      <div class="sec">Video Üretimi</div>
-      <div class="prog-wrap" id="prog_s">
-        <div style="font-size:13px;margin-bottom:6px" id="prog_s_label">Hazırlanıyor...</div>
-        <div class="prog-bar"><div class="prog-fill" id="prog_s_bar" style="width:0%"></div></div>
-        <div style="font-size:12px;color:var(--muted2)" id="prog_s_sub"></div>
-      </div>
-      <div class="card" style="margin-bottom:14px">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <select class="select" id="sched_s">
-            <option value="now">⚡ Anlık Yayınla</option>
-            <option value="8">08:00</option><option value="10">10:00</option>
-            <option value="12">12:00</option><option value="14">14:00</option>
-            <option value="16">16:00</option><option value="18" selected>18:00</option>
-            <option value="20">20:00</option><option value="22">22:00</option>
-          </select>
-          <button class="btn btn-primary" id="btn_s_uret" onclick="doStart(false)">Videoları Üret</button>
-          <button class="btn btn-green" id="btn_s_yukle" onclick="doStart(true)">Üret + Yükle</button>
-        </div>
-      </div>
-      <div class="warn" id="warn_s">Sunucu modu gerekli.</div>
-      <div class="sec">Seçilen Sıra <span style="color:var(--sozler2)" id="sel_cnt">0</span></div>
-      <div id="pqueue" style="max-height:320px;overflow-y:auto"><div class="empty">Söz Havuzu'ndan söz seçin</div></div>
-      <div style="margin-top:10px;display:flex;gap:8px">
-        <button class="btn btn-ghost" style="font-size:12px" onclick="selQ=[];RPQ();RQ()">Temizle</button>
-      </div>
-      <div class="sec" style="margin-top:20px">Log</div>
-      <div class="log-box" id="log_s">Bekleniyor...</div>
-      <div class="sec">Tamamlanan</div>
-      <div id="done_s"><div class="empty">Henüz yok</div></div>
-    </div>
-    <!-- SAĞ: Söz Havuzu -->
-    <div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <div class="sec" style="margin:0">Söz Havuzu <span style="color:var(--muted2);font-size:12px" id="q_stats"></span></div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-ghost" style="font-size:12px" onclick="toggleAddBox()">+ Ekle</button>
-          <button class="btn" style="background:var(--sozler);color:#fff;font-size:12px" id="btn_refresh" onclick="doRefresh()">🔄 Yenile</button>
-        </div>
-      </div>
-      <div id="add_box" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
-        <textarea class="textarea" id="add_text" placeholder="Söz metni..."></textarea>
-        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <input class="inp" id="add_author" placeholder="Yazar" style="flex:1;min-width:120px">
-          <select class="select" id="add_cat">
-            <option value="motivasyon">Motivasyon</option>
-            <option value="kisisel gelisim">Kişisel Gelişim</option>
-            <option value="ozlu soz">Özlü Söz</option>
-            <option value="dini">Dini</option>
-            <option value="ask iliskiler">Aşk</option>
-          </select>
-          <button class="btn btn-green" style="font-size:12px" onclick="doAddQuote()">Kaydet</button>
-          <button class="btn btn-ghost" style="font-size:12px" onclick="toggleAddBox()">İptal</button>
-        </div>
-      </div>
-      <div class="pills" id="q_pills">
-        <button class="pill active" onclick="FQ('all',this)">Tümü</button>
-        <button class="pill" onclick="FQ('motivasyon',this)">Motivasyon</button>
-        <button class="pill" onclick="FQ('kisisel',this)">Kişisel</button>
-        <button class="pill" onclick="FQ('ozlu',this)">Özlü</button>
-        <button class="pill" onclick="FQ('dini',this)">Dini</button>
-        <button class="pill" onclick="FQ('ask',this)">Aşk</button>
-        <select class="select" style="margin-left:auto;font-size:12px" id="q_sort" onchange="RQ()">
-          <option value="viral">Popülerlik</option>
-          <option value="newest">En Yeni</option>
-          <option value="alpha">A-Z</option>
-        </select>
-      </div>
-      <div id="qgrid" style="max-height:580px;overflow-y:auto"></div>
-    </div>
-  </div>
-</div>
-
-<!-- SÖZLER: VİDEOLAR -->
-<div id="sozler_videolar" class="page">
-  <div class="sec">Yüklenen Videolar</div>
-  <div class="card" style="overflow-x:auto">
-    <table class="table">
-      <thead><tr><th>#</th><th>Başlık</th><th>Tarih</th><th>İzlenme</th><th>Beğeni</th><th>Link</th></tr></thead>
-      <tbody id="s_vtb"></tbody>
-    </table>
-  </div>
-</div>
-
-<!-- SÖZLER: ANALİZ -->
-<div id="sozler_analiz" class="page">
-  <div class="sec">Genel Bakış</div>
-  <div class="g4">
-    <div class="stat s-sozler"><div class="stat-label">Toplam Video</div><div class="stat-val" id="s_tv">-</div></div>
-    <div class="stat s-green"><div class="stat-label">Toplam İzlenme</div><div class="stat-val" id="s_tw">-</div></div>
-    <div class="stat s-sozler"><div class="stat-label">Toplam Beğeni</div><div class="stat-val" id="s_tl">-</div></div>
-    <div class="stat s-green"><div class="stat-label">Etkileşim</div><div class="stat-val" id="s_te">-</div></div>
-  </div>
-  <div class="g2" style="margin-top:16px">
-    <div class="card"><div class="card-title">İzlenme Trendi</div><canvas id="s_vc" height="180"></canvas></div>
-    <div class="card"><div class="card-title">En İyi Performans</div><div id="s_top"></div></div>
-  </div>
-</div>
-
-<!-- SÖZLER: YOL HARİTASI -->
-<div id="sozler_roadmap" class="page">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-    <div><div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800">🗺️ Yol Haritası — Sözler</div></div>
-    <div style="display:flex;gap:8px">
-      <button class="btn" style="background:var(--sozler);color:#fff" onclick="loadRoadmap('sozler',false)">🔄 Yenile</button>
-      <button class="btn btn-ghost" onclick="loadRoadmap('sozler',true)">Önbellek</button>
-    </div>
-  </div>
-  <div id="rm_s_loading" style="display:none;text-align:center;padding:40px"><span class="spin" style="width:24px;height:24px"></span><div style="color:var(--sozler2);margin-top:12px">Analiz ediliyor...</div></div>
-  <div id="rm_s_content"><div class="empty">Analiz başlatmak için butona tıkla</div></div>
-</div>
-
 <!-- ═══════════════════════════════════════════════ TARİH ═══ -->
 
 <!-- TARİH: ÜRETİM -->
-<div id="tarih_uretim" class="page">
+<div id="tarih_uretim" class="page active">
   <div class="sec">Tarih Videosu Üretimi</div>
   <div class="prog-wrap" id="prog_t">
     <div style="font-size:13px;margin-bottom:6px" id="prog_t_label">Üretiliyor...</div>
@@ -452,73 +320,6 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
   <div id="rm_t_content"><div class="empty">Analiz başlatmak için butona tıkla</div></div>
 </div>
 
-<!-- ═══════════════════════════════════════════════ VİRAL ═══ -->
-
-<!-- VİRAL: ÜRETİM -->
-<div id="viral_uretim" class="page">
-  <div style="background:#dc262611;border:1px solid var(--viral);border-radius:12px;padding:16px;margin-bottom:16px">
-    <div style="font-size:14px;font-weight:600;color:var(--viral2);margin-bottom:8px">⚡ Viral İçerik</div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-red" onclick="viralCheck(false)">🔍 Kontrol Et</button>
-      <button class="btn btn-ghost" onclick="viralCheck(true)">🔄 Tümünü Getir</button>
-      <button class="btn btn-ghost" onclick="viralSelAll()">Tümünü Seç</button>
-      <button class="btn btn-ghost" onclick="viralSelNone()">Temizle</button>
-    </div>
-  </div>
-  <div class="prog-wrap" id="prog_v">
-    <div style="font-size:13px;margin-bottom:6px" id="prog_v_label">Üretiliyor...</div>
-    <div class="prog-bar"><div class="prog-fill" id="prog_v_bar" style="width:0%;background:linear-gradient(90deg,var(--viral),var(--viral2))"></div></div>
-  </div>
-  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
-    <select class="select" id="viral_sched">
-      <option value="now">⚡ Anlık Yayınla</option>
-      <option value="8">08:00</option><option value="12">12:00</option><option value="16">16:00</option><option value="20">20:00</option>
-    </select>
-    <button class="btn btn-red" onclick="viralProduce(false)">▶ Seçilenleri Üret</button>
-    <button class="btn btn-green" onclick="viralProduce(true)">▶ Üret + Yükle</button>
-    <span style="font-size:12px;color:var(--muted2)" id="viral_sel_cnt"></span>
-  </div>
-  <div class="g2">
-    <div>
-      <div class="sec">İçerik Listesi <select id="viral_sort" onchange="viralLoad()" style="background:var(--bg);border:1px solid var(--border2);border-radius:6px;color:var(--muted2);padding:3px 8px;font-size:11px;margin-left:8px"><option value="date">En Yeni</option><option value="likes">Beğeni</option></select></div>
-      <div id="viral_list" style="max-height:500px;overflow-y:auto"><div class="empty">Önce kontrol et</div></div>
-    </div>
-    <div>
-      <div class="sec">Log</div>
-      <div class="log-box" id="log_v">Bekleniyor...</div>
-      <div class="sec">Tamamlanan</div>
-      <div id="done_v"><div class="empty">Henüz yok</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- VİRAL: VİDEOLAR -->
-<div id="viral_videolar" class="page">
-  <div class="sec">Yüklenen Viral Videolar</div>
-  <button class="btn btn-ghost" style="margin-bottom:14px" onclick="loadViralVideos()">🔄 Yenile</button>
-  <div id="viral_vlist"><div class="empty">Yükleniyor...</div></div>
-</div>
-
-<!-- VİRAL: ANALİZ -->
-<div id="viral_analiz" class="page">
-  <div class="sec">Viral Kanal Analizi</div>
-  <div class="g4">
-    <div class="stat s-viral"><div class="stat-label">Toplam Video</div><div class="stat-val" id="v_tv">-</div></div>
-    <div class="stat s-green"><div class="stat-label">İzlenme</div><div class="stat-val" id="v_tw">-</div></div>
-    <div class="stat s-viral"><div class="stat-label">Beğeni</div><div class="stat-val" id="v_tl">-</div></div>
-    <div class="stat s-green"><div class="stat-label">Etkileşim</div><div class="stat-val" id="v_te">-</div></div>
-  </div>
-  <div class="card" style="margin-top:16px">
-    <div class="card-title">Son Yüklenen Videolar</div>
-    <div class="card" style="overflow-x:auto">
-      <table class="table">
-        <thead><tr><th>#</th><th>Başlık</th><th>Tarih</th><th>Link</th></tr></thead>
-        <tbody id="v_vtb"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
 <!-- ═══════════════════════════════════════════ NOTES OF HISTORY ═══ -->
 
 <!-- NOTES: VİDEOLAR -->
@@ -550,39 +351,34 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 // ── Veri ─────────────────────────────────────────────────────────
 var _raw = new TextDecoder('utf-8').decode(Uint8Array.from(atob('__DATA_B64__'),function(c){return c.charCodeAt(0);}));
 var D = JSON.parse(_raw);
-var UPLOAD = D.upload||[], QUOTES = D.quotes||[], PERF = D.perf||{}, ROADMAP = D.roadmap||{};
+var ROADMAP = D.roadmap||{};
 document.getElementById('gentime').textContent = D.generated_at||'';
 
 var IS_SRV = (window.location.port===''||window.location.port==='8080'||window.location.protocol==='https:');
 if(IS_SRV){ document.getElementById('liveBadge').style.display='inline-block'; }
-else { document.getElementById('warn_s').style.display='block'; }
 
 function fmt(n){return Number(n||0).toLocaleString('tr-TR');}
 function fmtD(s){return s?new Date(s).toLocaleDateString('tr-TR',{day:'2-digit',month:'short',year:'numeric'}):'-';}
 
 // ── Navigasyon ────────────────────────────────────────────────────
-var curCh = 'sozler';
+var curCh = 'tarih';
 var curLang = 'both';
 var curFmt = 'auto';
-var deleted = [];
-try{ deleted = JSON.parse(localStorage.getItem('del_q')||'[]'); }catch(e){}
 
 function switchCh(ch){
   curCh = ch;
   document.querySelectorAll('.ch-tab').forEach(function(b){b.classList.remove('active');});
   document.querySelector('.ch-tab[data-ch="'+ch+'"]').classList.add('active');
-  ['sozler','tarih','viral','notes'].forEach(function(c){
+  ['tarih','notes'].forEach(function(c){
     var n=document.getElementById('nav_'+c);
     if(n){n.style.display=c===ch?'flex':'none';}
   });
   document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');p.style.display='none';});
-  var firstPage = {sozler:'sozler_uretim',tarih:'tarih_uretim',viral:'viral_uretim',notes:'notes_videolar'}[ch];
+  var firstPage = {tarih:'tarih_uretim',notes:'notes_videolar'}[ch];
   showPage(firstPage);
   document.querySelectorAll('#nav_'+ch+' .nav-btn').forEach(function(b,i){if(i===0)b.classList.add('active');else b.classList.remove('active');});
   if(ch==='tarih'&&IS_SRV) loadTarihVideos();
-  if(ch==='viral'&&IS_SRV) viralLoad();
   if(ch==='notes'&&IS_SRV) loadNotesVideos();
-  if(ch==='sozler'&&IS_SRV) loadSozlerVideos();
 }
 
 function showPage(id){
@@ -600,107 +396,10 @@ function goPage(id){
   btns.forEach(function(b){if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes(id))b.classList.add('active');});
   // page-specific loads
   if(id==='tarih_videolar'&&IS_SRV) loadTarihVideos();
-  if(id==='viral_videolar'&&IS_SRV) loadViralVideos();
   if(id==='notes_videolar'&&IS_SRV) loadNotesVideos();
-  if(id==='sozler_videolar'&&IS_SRV) loadSozlerVideos();
-  if(id==='sozler_analiz') loadSozlerAnaliz();
   if(id==='tarih_analiz'&&IS_SRV) loadTarihAnaliz();
-  if(id==='viral_analiz'&&IS_SRV) loadViralAnaliz();
   if(id==='notes_analiz'&&IS_SRV) loadNotesAnaliz();
 }
-
-// ── Söz Havuzu ────────────────────────────────────────────────────
-var selQ = [], curF = 'all';
-var catColor = {motivasyon:'var(--sozler)',kisisel:'var(--notes)','ozlu':'var(--tarih)',dini:'var(--green)',ask:'var(--viral2)'};
-
-function RQ(){
-  var available = QUOTES.filter(function(q){return !q.used && deleted.indexOf(q.id)<0;});
-  var sort = document.getElementById('q_sort').value;
-  var list = curF==='all'?available:available.filter(function(q){return (q.category||'').toLowerCase().indexOf(curF)>=0;});
-  if(sort==='viral') list=list.slice().sort(function(a,b){return (b.viral_score||5)-(a.viral_score||5);});
-  else if(sort==='newest') list=list.slice().sort(function(a,b){return (b.created_at||'')>(a.created_at||'')?1:-1;});
-  else list=list.slice().sort(function(a,b){return (a.text||'').localeCompare(b.text||'','tr');});
-  document.getElementById('q_stats').textContent = available.length+' bekliyor';
-  if(!list.length){document.getElementById('qgrid').innerHTML='<div class="empty">Söz bulunamadı</div>';return;}
-  var h='';
-  list.forEach(function(q){
-    var isSel=selQ.some(function(s){return s.id===q.id;});
-    var stars='';for(var i=0;i<5;i++)stars+=i<Math.round((q.viral_score||5)/2)?'★':'☆';
-    h+='<div class="qcard'+(isSel?' sel':'')+'" onclick="TQ(\''+q.id+'\')">'+
-      '<button class="qdel" onclick="DEL(event,\''+q.id+'\')">×</button>'+
-      (isSel?'<span class="qsel-badge">✓</span>':'')+
-      '<div class="qtext">«'+q.text+'»</div>'+
-      '<div class="qauthor">— '+(q.author||'Anonim')+'</div>'+
-      '<div class="qtags"><span class="qtag" style="background:'+(catColor[q.category]||'var(--muted)')+'22;color:'+(catColor[q.category]||'var(--muted2)')+';border-color:'+(catColor[q.category]||'var(--border)')+'44">'+(q.category||'genel')+'</span>'+
-      '<span style="color:#f59e0b;font-size:11px">'+stars+'</span></div></div>';
-  });
-  document.getElementById('qgrid').innerHTML=h;
-}
-
-function TQ(id){
-  var q=QUOTES.find(function(x){return x.id===id;});
-  if(!q||q.used||deleted.indexOf(id)>=0) return;
-  var idx=selQ.findIndex(function(s){return s.id===id;});
-  if(idx>=0) selQ.splice(idx,1); else selQ.push(q);
-  RQ(); RPQ();
-}
-
-function DEL(e,id){
-  e.stopPropagation();
-  if(!confirm('Bu söz silinsin?')) return;
-  deleted.push(id);
-  localStorage.setItem('del_q',JSON.stringify(deleted));
-  selQ=selQ.filter(function(q){return q.id!==id;});
-  if(IS_SRV) fetch('/api/delete-quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})}).catch(function(){});
-  RQ(); RPQ();
-}
-
-function FQ(cat,btn){
-  document.querySelectorAll('#q_pills .pill').forEach(function(b){b.classList.remove('active');});
-  btn.classList.add('active'); curF=cat; RQ();
-}
-
-function RPQ(){
-  document.getElementById('sel_cnt').textContent = selQ.length;
-  if(!selQ.length){document.getElementById('pqueue').innerHTML='<div class="empty">Söz seçin</div>';return;}
-  document.getElementById('pqueue').innerHTML=selQ.map(function(q,i){
-    return '<div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;margin-bottom:6px">'+
-      '<span style="color:var(--muted);min-width:20px;font-weight:700">'+(i+1)+'</span>'+
-      '<span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">«'+q.text+'»</span>'+
-      '<span style="color:var(--viral2);cursor:pointer;font-size:16px" onclick="RMQ(\''+q.id+'\')">×</span></div>';
-  }).join('');
-}
-
-function RMQ(id){selQ=selQ.filter(function(q){return q.id!==id;});RQ();RPQ();}
-function toggleAddBox(){var el=document.getElementById('add_box');el.style.display=el.style.display==='none'?'block':'none';}
-
-function doAddQuote(){
-  var text=document.getElementById('add_text').value.trim();
-  if(!text){alert('Söz metni gerekli');return;}
-  if(IS_SRV){
-    fetch('/api/add-quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:text,author:document.getElementById('add_author').value.trim()||'Anonim',category:document.getElementById('add_cat').value,viral_score:7,source:'manuel'})})
-    .then(function(r){return r.json();}).then(function(d){if(d.ok){document.getElementById('add_text').value='';alert('Eklendi! Sayfa yenileniyor...');location.reload();}else alert('Hata: '+d.error);});
-  }
-}
-
-async function doRefresh(){
-  if(!IS_SRV){alert('Sunucu modu gerekli');return;}
-  var btn=document.getElementById('btn_refresh');btn.disabled=true;btn.textContent='⏳';
-  try{var r=await fetch('/api/refresh-quotes',{method:'POST'});var d=await r.json();if(d.ok){alert(d.count+' söz bulundu! Yenileniyor...');location.reload();}else alert('Hata: '+d.error);}
-  catch(e){alert('Hata: '+e);}finally{btn.disabled=false;btn.textContent='🔄 Yenile';}
-}
-
-// ── Sözler Üretim ─────────────────────────────────────────────────
-async function doStart(upload){
-  if(!IS_SRV){alert('Sunucu modu gerekli');return;}
-  if(!selQ.length){alert('Önce söz seçin!');return;}
-  var sh=document.getElementById('sched_s').value;
-  var r=await fetch('/api/produce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({queue:selQ,auto_upload:upload,scheduled_hour:sh})});
-  var d=await r.json();
-  if(d.ok){document.getElementById('btn_s_uret').disabled=true;document.getElementById('btn_s_yukle').disabled=true;document.getElementById('prog_s').style.display='block';}
-  else alert('Hata: '+d.error);
-}
-
 // ── Tarih üretim ──────────────────────────────────────────────────
 var selectedLang='both', selectedFmt='auto';
 
@@ -845,38 +544,6 @@ async function uploadTarihV(btn){
   if(d.ok){alert('Yükleme başladı!');loadTarihVideos();}else alert('Hata: '+d.error);
 }
 
-async function loadSozlerVideos(){
-  if(!IS_SRV) return;
-  try{
-    // YouTube canlı istatistikleri
-    var ar = await fetch('/api/analytics/sozler');
-    var ad = await ar.json();
-    var statsMap = (ad.ok && ad.stats) ? ad.stats : {};
-    if(ad.ok && ad.total){
-      document.getElementById('s_tv').textContent = ad.total.videos;
-      document.getElementById('s_tw').textContent = fmt(ad.total.views);
-      document.getElementById('s_tl').textContent = fmt(ad.total.likes);
-      var te = ad.total.views>0 ? ((ad.total.likes+ad.total.comments)/ad.total.views*100).toFixed(1) : 0;
-      document.getElementById('s_te').textContent = '%'+te;
-    }
-    // Video listesi
-    var hist = D.upload || [];
-    if(!hist.length){
-      document.getElementById('s_vtb').innerHTML='<tr><td colspan="6" class="empty">Henüz video yok</td></tr>';
-      return;
-    }
-    document.getElementById('s_vtb').innerHTML = hist.map(function(v,i){
-      var s = statsMap[v.video_id||''] || {};
-      return '<tr><td style="color:var(--muted)">'+(i+1)+'</td>'+
-        '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(s.title||v.title||'-')+'</td>'+
-        '<td style="color:var(--muted2)">'+fmtD(v.uploaded_at)+'</td>'+
-        '<td style="font-weight:600">'+fmt(s.views)+'</td>'+
-        '<td style="color:var(--sozler2)">'+fmt(s.likes)+'</td>'+
-        '<td>'+(v.url?'<a href="'+v.url+'" target="_blank" style="color:var(--notes2)">İzle</a>':'-')+'</td></tr>';
-    }).join('');
-  }catch(e){ console.log('sozler videos err:',e); }
-}
-
 function loadNotesVideos(){
   if(!IS_SRV){document.getElementById('notes_vlist').innerHTML='<div class="empty">Sunucu modu gerekli</div>';return;}
   fetch('/api/notes/local-videos').then(function(r){return r.json();}).then(function(d){
@@ -895,59 +562,7 @@ function loadNotesVideos(){
   });
 }
 
-function loadViralVideos(){
-  if(!IS_SRV) return;
-  fetch('/api/viral/local-videos').then(function(r){return r.json();}).then(function(d){
-    if(!d.ok||!d.videos.length){document.getElementById('viral_vlist').innerHTML='<div class="empty">Henüz video yok</div>';return;}
-    var h='';
-    d.videos.forEach(function(v){
-      var title=(v.title||v.filename).replace(/\bVideo\b/gi,'').trim().substring(0,60);
-      h+='<div class="vcard"><video src="'+v.url+'" style="width:54px;height:96px;object-fit:cover;border-radius:8px;background:#000;flex-shrink:0" controls></video>';
-      h+='<div class="vcard-info"><div class="vcard-title">'+title+'</div>';
-      h+='<div class="vcard-meta">'+v.size_mb+' MB'+(v.generated_at?' · '+v.generated_at:'')+'</div>';
-      if(v.uploaded) h+='<div class="uploaded-badge">✓ Yüklendi</div>';
-      h+='</div>';
-      if(v.video_url) h+='<a href="'+v.video_url+'" target="_blank" class="btn btn-ghost" style="font-size:12px;text-decoration:none">▶ İzle</a>';
-      h+='</div>';
-    });
-    document.getElementById('viral_vlist').innerHTML=h;
-  });
-}
-
 // ── Analiz ────────────────────────────────────────────────────────
-async function loadSozlerAnaliz(){
-  var vs=(PERF&&PERF.video_stats)||{};
-  var tv=UPLOAD.length, tw=0,tl=0,tc=0;
-  UPLOAD.forEach(function(u){var s=vs[u.video_id||'']||{};tw+=s.views||0;tl+=s.likes||0;tc+=s.comments||0;});
-  document.getElementById('s_tv').textContent=tv;
-  document.getElementById('s_tw').textContent=fmt(tw);
-  document.getElementById('s_tl').textContent=fmt(tl);
-  document.getElementById('s_te').textContent='%'+(tw>0?((tl+tc)/tw*100).toFixed(1):0);
-  if(IS_SRV){try{
-    var r=await fetch('/api/analytics/sozler');var d=await r.json();
-    if(d.ok&&d.total){
-      document.getElementById('s_tw').textContent=fmt(d.total.views);
-      document.getElementById('s_tl').textContent=fmt(d.total.likes);
-      document.getElementById('s_te').textContent='%'+(d.total.views>0?((d.total.likes+d.total.comments)/d.total.views*100).toFixed(1):0);
-    }
-  }catch(e){}}
-  // Chart
-  var ctx=document.getElementById('s_vc').getContext('2d');
-  var vv=UPLOAD.slice(-10).map(function(u){return (vs[u.video_id||'']||{}).views||0;});
-  var ll=UPLOAD.slice(-10).map(function(_,i){return 'V'+(i+1);});
-  new Chart(ctx,{type:'bar',data:{labels:ll,datasets:[{label:'İzlenme',data:vv,backgroundColor:'rgba(124,58,237,.6)',borderColor:'#7c3aed',borderWidth:1}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#1c1d30'},ticks:{color:'#5a5c78'}},y:{grid:{color:'#1c1d30'},ticks:{color:'#5a5c78'}}}}});
-  // Top videos
-  var tops=UPLOAD.slice().sort(function(a,b){return ((vs[b.video_id||'']||{}).views||0)-((vs[a.video_id||'']||{}).views||0);}).slice(0,5);
-  document.getElementById('s_top').innerHTML=tops.length?tops.map(function(u,i){
-    var v=vs[u.video_id||'']||{};
-    return '<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">'+
-      '<span style="color:var(--sozler2);font-weight:700;min-width:20px">'+(i+1)+'.</span>'+
-      '<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(u.title||'-')+'</span>'+
-      '<span style="color:var(--green2);font-size:12px;white-space:nowrap">'+fmt(v.views)+'</span>'+
-      (u.url?'<a href="'+u.url+'" target="_blank" style="color:var(--notes2);font-size:11px">İzle</a>':'')+'</div>';
-  }).join(''):'<div class="empty">Veri yok</div>';
-}
-
 async function loadTarihAnaliz(){
   try{
     // Canlı YouTube istatistikleri
@@ -970,31 +585,6 @@ async function loadTarihAnaliz(){
         '<span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(v.title||v.filename)+'</span>'+
         (v.video_url?'<a href="'+v.video_url+'" target="_blank" style="color:var(--notes2);font-size:11px">İzle</a>':'')+'</div>';
     }).join('')||'<div class="empty">Veri yok</div>';
-  }catch(e){}
-}
-
-async function loadViralAnaliz(){
-  try{
-    if(IS_SRV){try{
-      var ar=await fetch('/api/analytics/viral');var ad=await ar.json();
-      if(ad.ok&&ad.total){
-        document.getElementById('v_tv').textContent=ad.total.videos;
-        document.getElementById('v_tw').textContent=fmt(ad.total.views);
-        document.getElementById('v_tl').textContent=fmt(ad.total.likes);
-        document.getElementById('v_te').textContent='%'+(ad.total.views>0?((ad.total.likes+ad.total.comments)/ad.total.views*100).toFixed(1):0);
-      }
-    }catch(e){}}
-    var r=await fetch('/api/viral/local-videos');var d=await r.json();
-    var videos=d.videos||[];
-    if(!document.getElementById('v_tv').textContent||document.getElementById('v_tv').textContent==='-')
-      document.getElementById('v_tv').textContent=videos.length;
-    var upl=videos.filter(function(v){return v.uploaded;});
-    document.getElementById('v_vtb').innerHTML=upl.slice(0,10).map(function(v,i){
-      return '<tr><td style="color:var(--muted)">'+(i+1)+'</td>'+
-        '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(v.title||v.filename).substring(0,50)+'</td>'+
-        '<td style="color:var(--muted2)">'+fmtD(v.generated_at)+'</td>'+
-        '<td>'+(v.video_url?'<a href="'+v.video_url+'" target="_blank" style="color:var(--notes2)">İzle</a>':'-')+'</td></tr>';
-    }).join('');
   }catch(e){}
 }
 
@@ -1022,64 +612,13 @@ async function loadNotesAnaliz(){
   }catch(e){}
 }
 
-// ── Viral ─────────────────────────────────────────────────────────
-var viralSel = new Set();
-
-async function viralCheck(force){
-  if(!IS_SRV){alert('Sunucu modu gerekli');return;}
-  var r=await fetch('/api/viral/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({force:!!force})});
-  var d=await r.json();
-  document.getElementById('log_v').innerHTML='<div>'+(d.new>0?d.new+' yeni içerik':'Yeni içerik yok')+'</div>';
-  viralLoad();
-}
-
-async function viralLoad(){
-  if(!IS_SRV) return;
-  var sort=document.getElementById('viral_sort').value;
-  var r=await fetch('/api/viral/queue');var d=await r.json();
-  var queue=(d.queue||[]).filter(function(q){return q.status==='bekliyor';});
-  if(sort==='likes') queue=queue.sort(function(a,b){return (b.likes||0)-(a.likes||0);});
-  var tl=document.getElementById('viral_list');
-  if(!queue.length){tl.innerHTML='<div class="empty">Kuyruk boş</div>';return;}
-  tl.innerHTML=queue.map(function(q){
-    var checked=viralSel.has(q.id)?'checked':'';
-    var mediaHtml=q.has_video&&q.video_path
-      ?'<video src="/output/viral/'+q.video_path.replace(/\\/g,'/').split('/').pop()+'" style="width:48px;height:85px;object-fit:cover;border-radius:6px;background:#000;flex-shrink:0" controls onclick="event.stopPropagation()"></video>'
-      :'<div style="width:48px;height:85px;flex-shrink:0;background:var(--bg);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:20px">📱</div>';
-    return '<div class="tweet-card" onclick="toggleViralItem(this)">'+'<input type="checkbox" class="v-cb" value="'+q.id+'" '+checked+' style="width:16px;height:16px;accent-color:var(--viral);flex-shrink:0" onclick="event.stopPropagation();toggleViralCb(this)">'+mediaHtml+'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);line-height:1.5;margin-bottom:4px">'+q.text.substring(0,100)+(q.text.length>100?'...':'')+'</div><div style="font-size:11px;color:var(--muted2);display:flex;gap:8px">'+(q.likes?'❤ '+q.likes:'')+(q.retweets?' 🔁 '+q.retweets:'')+'<a href="'+q.link+'" target="_blank" style="color:var(--notes2)" onclick="event.stopPropagation()">Tweet →</a></div></div></div>';
-  }).join('');
-  updateViralCnt();
-}
-
-function toggleViralItem(div){var cb=div.querySelector('.v-cb');if(cb){cb.checked=!cb.checked;toggleViralCb(cb);}}
-function toggleViralCb(cb){if(cb.checked)viralSel.add(cb.value);else viralSel.delete(cb.value);updateViralCnt();}
-function viralSelAll(){document.querySelectorAll('.v-cb').forEach(function(cb){cb.checked=true;viralSel.add(cb.value);});updateViralCnt();}
-function viralSelNone(){document.querySelectorAll('.v-cb').forEach(function(cb){cb.checked=false;});viralSel.clear();updateViralCnt();}
-function updateViralCnt(){var c=viralSel.size;document.getElementById('viral_sel_cnt').textContent=c>0?c+' seçildi':'';}
-
-async function viralProduce(autoUp){
-  if(!IS_SRV){alert('Sunucu modu gerekli');return;}
-  if(!viralSel.size){alert('İçerik seç!');return;}
-  var sh=document.getElementById('viral_sched').value;
-  document.getElementById('prog_v').style.display='block';
-  var r=await fetch('/api/viral/produce',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auto_upload:autoUp,ids:Array.from(viralSel),scheduled_hour:sh,instant:sh==='now'})});
-  var d=await r.json();
-  if(!d.ok){alert('Hata: '+d.error);document.getElementById('prog_v').style.display='none';return;}
-  var iv=setInterval(async function(){
-    var sr=await fetch('/api/viral/status');var ss=await sr.json();
-    var lb=document.getElementById('log_v');lb.innerHTML=(ss.log||[]).map(function(l){return '<div>'+l+'</div>';}).join('');lb.scrollTop=lb.scrollHeight;
-    if(!ss.running){clearInterval(iv);document.getElementById('prog_v_bar').style.width='100%';if(ss.completed&&ss.completed.length){document.getElementById('done_v').innerHTML=ss.completed.map(function(c){return '<div class="done-item"><span style="color:var(--green2)">✓</span><span style="flex:1">'+c.text+'</span>'+(c.video_url?'<a href="'+c.video_url+'" target="_blank" style="color:var(--notes2)">İzle</a>':'')+'</div>';}).join('');}}
-  },2000);
-}
-
 // ── Roadmap ───────────────────────────────────────────────────────
 async function loadRoadmap(ch, useCache){
   if(!IS_SRV) return;
   var loadEl=document.getElementById('rm_'+ch[0]+'_loading');
   var contEl=document.getElementById('rm_'+ch[0]+'_content');
   loadEl.style.display='block'; contEl.innerHTML='';
-  var url = ch==='tarih' ? (useCache?'/api/roadmap/tarih?cache=1':'/api/roadmap/tarih')
-                         : (useCache?'/api/roadmap?cache=1':'/api/roadmap');
+  var url = useCache?'/api/roadmap/tarih?cache=1':'/api/roadmap/tarih';
   try{
     var r=await fetch(url);var d=await r.json();
     loadEl.style.display='none';
@@ -1090,7 +629,7 @@ async function loadRoadmap(ch, useCache){
 
 function renderRoadmap(rm, ch){
   if(!rm) return '<div class="empty">Veri yok</div>';
-  var data = ch==='tarih' ? (rm.tarih||rm) : (rm.sozler||rm);
+  var data = rm.tarih||rm;
   var h='';
   if(data.ozet) h+='<div class="rm-section"><div style="font-size:13px;color:var(--muted2);line-height:1.7">'+data.ozet+'</div></div>';
   if(data.hemen_yapilacaklar&&data.hemen_yapilacaklar.length){
@@ -1110,32 +649,11 @@ function renderRoadmap(rm, ch){
 
 // ── Polling ───────────────────────────────────────────────────────
 if(IS_SRV){
-  setInterval(async function(){
-    try{
-      var r=await fetch('/api/status');var s=await r.json();
-      var lb=document.getElementById('log_s');
-      lb.innerHTML=(s.log||[]).map(function(l){return '<div>'+l+'</div>';}).join('');
-      lb.scrollTop=lb.scrollHeight;
-      if(!s.running){
-        document.getElementById('btn_s_uret').disabled=false;
-        document.getElementById('btn_s_yukle').disabled=false;
-      }
-      if(s.completed&&s.completed.length){
-        document.getElementById('done_s').innerHTML=s.completed.map(function(c){
-          return '<div class="done-item"><span style="color:var(--green2)">✓</span><span style="flex:1">«'+c.quote_text.substring(0,50)+'»</span>'+(c.video_url?'<a href="'+c.video_url+'" target="_blank" style="color:var(--notes2)">İzle</a>':'<span style="color:var(--muted2)">Yerel</span>')+'</div>';
-        }).join('');
-      }
-    }catch(e){}
-  },1500);
-
   // Roadmap cache
-  fetch('/api/roadmap?cache=1').then(function(r){return r.json();}).then(function(d){if(d.ok&&d.roadmap&&d.roadmap.sozler){document.getElementById('rm_s_content').innerHTML=renderRoadmap(d.roadmap,'sozler');}}).catch(function(){});
   fetch('/api/roadmap/tarih?cache=1').then(function(r){return r.json();}).then(function(d){if(d.ok&&d.roadmap){document.getElementById('rm_t_content').innerHTML=renderRoadmap(d.roadmap,'tarih');}}).catch(function(){});
 }
 
 // ── İlk Render ────────────────────────────────────────────────────
-RQ(); RPQ();
-loadSozlerAnaliz();
 if(IS_SRV) loadSuggestions();
 </script>
 </body>
