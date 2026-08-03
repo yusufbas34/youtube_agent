@@ -652,7 +652,7 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
 
     print(f"\n  🎬 {title[:55]}")
 
-    # Görsel arama terimleri
+    # Görsel arama terimleri — segment başına, üretim sırasında aranacak
     if not pexels_q:
         topic = content.get("topic", title)
         pexels_q = [
@@ -662,34 +662,6 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
             "history battle cinematic",
             "dramatic moody landscape",
         ]
-
-    # Görselleri indir — her sorgu için farklı resim al
-    print(f"  🔍 Görseller aranıyor ({len(pexels_q)} sorgu)...")
-    import random as _random
-    # Sorguları karıştır — her çalıştırmada farklı sıra
-    shuffled_q = pexels_q.copy()
-    _random.shuffle(shuffled_q)
-    # Her segment için farklı arama yap
-    urls = fetch_images(shuffled_q, count=len(segments)+3)
-    # URL'leri de karıştır — aynı sırayı önle
-    _random.shuffle(urls)
-    images = []
-    for url in urls:
-        img = download_image(url)
-        if img:
-            img = prepare_for_shorts(img)
-            img = make_dramatic(img)
-            images.append(img)
-            if len(images) >= len(segments):
-                break
-
-    # Eksik görselleri fallback ile tamamla
-    idx = 0
-    while len(images) < len(segments):
-        images.append(make_fallback_image(accent_hex, idx))
-        idx += 1
-
-    print(f"  → {len(images)} görsel hazır ({sum(1 for u in urls if u)} URL bulunmuştu)")
 
     # Giriş TTS: "Tarihten Notlar"
     print(f"  🎙 Giriş sesi...")
@@ -738,18 +710,19 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
         except Exception as e:
             print(f"    ⚠ AI video atlandı: {e}")
 
-        # 2. Stock video dene (Pexels + Pixabay)
+        # Bu segmentin kendi arama sorgusu — segment.visual artık İngilizce üretiliyor
+        visual_raw = seg.get("visual","")
+        if visual_raw:
+            query_v = query_for_visual(visual_raw)
+        elif i < len(pexels_q):
+            query_v = pexels_q[i]  # Claude'un urettigi Ingilizce sorgu
+        else:
+            query_v = query_for_visual(seg.get("text",""))
+
+        # 2. Stock video dene (Pexels + Pixabay) — aynı segment sorgusuyla
         stock_video_path = None
         if ai_frame is None:
             try:
-                # Segment visual Turkce olabilir — Ingilizce'ye cevir + pexels_queries kullan
-                visual_raw = seg.get("visual","")
-                if visual_raw:
-                    query_v = query_for_visual(visual_raw)
-                elif i < len(pexels_q):
-                    query_v = pexels_q[i]  # Claude'un urettigi Ingilizce sorgu
-                else:
-                    query_v = query_for_visual(seg.get("text",""))
                 tmp_v = str(TMP_DIR / f"stock_{i}_{int(time.time())}.mp4")
                 print(f"    🔍 Video aranıyor: {query_v[:50]}")
                 if fetch_stock_video(query_v, tmp_v):
@@ -757,7 +730,19 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
             except Exception as e:
                 print(f"    ⚠ Stock video atlandı: {e}")
 
-        # 3. Fallback: Pixabay/Pexels fotoğraf (her zaman çalışır)
+        # 3. Video bulunamadıysa, AYNI sorguyla ilgili bir fotoğraf dene
+        seg_image = None
+        if ai_frame is None and not stock_video_path:
+            try:
+                seg_urls = fetch_images([query_v], count=1)
+                if seg_urls:
+                    img = download_image(seg_urls[0])
+                    if img:
+                        seg_image = make_dramatic(prepare_for_shorts(img))
+            except Exception as e:
+                print(f"    ⚠ Segment fotoğrafı atlandı: {e}")
+
+        # 4. Son çare: sinematik gradyan (hiçbir zaman alakasız görsel kullanma)
         if ai_frame is not None:
             img_arr   = ai_frame
             zoom_in   = False
@@ -766,8 +751,12 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
             img_arr   = None
             zoom_in   = False
             use_video = True
+        elif seg_image is not None:
+            img_arr   = np.array(seg_image)
+            zoom_in   = (i % 2 == 0)
+            use_video = False
         else:
-            img_arr   = np.array(images[i])
+            img_arr   = np.array(make_fallback_image(accent_hex, i))
             zoom_in   = (i % 2 == 0)
             use_video = False
 
@@ -792,7 +781,7 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
                 print(f"    ⚠ Video yuklenemedi, fotograf kullaniliyor: {e}")
                 _vc = None
                 use_video = False
-                img_arr = np.array(images[i])
+                img_arr = np.array(seg_image) if seg_image is not None else np.array(make_fallback_image(accent_hex, i))
 
         if _vc is not None:
             def make_frame(t, _v=_vc, _dur=_vc_dur, _txt=_seg_txt,
@@ -921,15 +910,23 @@ def create_history_video(content: dict, output_path: str = None, channel: str = 
                       "#ilginçtarih","#viral","#keşfetteyim","#bilgi"]
     all_hashtags = list(dict.fromkeys(base_hashtags + extra_hashtags))[:15]
 
+    source_url = content.get("source_url")
+    source_line = ""
+    if source_url:
+        source_line = ("\n\nKaynak: " + source_url if channel != "notesofhistory"
+                        else "\n\nSource: " + source_url)
+
     meta = {
         "title":        content.get("title",""),
-        "description":  content.get("description","") + "\n\n" + " ".join(all_hashtags),
+        "description":  content.get("description","") + source_line + "\n\n" + " ".join(all_hashtags),
         "tags":         all_tags,
         "hashtags":     all_hashtags,
         "topic":        content.get("topic",""),
         "period":       content.get("period",""),
         "format":       content.get("format","timeline"),
         "channel":      channel,
+        "verified":     content.get("verified", False),
+        "source_url":   source_url,
         "generated_at": generated_str,
     }
     with open(output_path.replace(".mp4",".json"),"w",encoding="utf-8") as f:

@@ -69,7 +69,7 @@ def load_youtube_uploaded_topics() -> list:
     return topics
 
 
-def build_prompt(topic, format_type, today):
+def build_prompt(topic, format_type, today, source_extract: str = None, source_title: str = None):
     used = load_used_topics()
     used_list = ", ".join([t["topic"] for t in used[-50:]]) if used else "yok"
     yt_topics = load_youtube_uploaded_topics()
@@ -82,13 +82,35 @@ def build_prompt(topic, format_type, today):
         "simple":      "Kısa ve çarpıcı tarih bilgisi",
     }
     fmt_desc = format_descriptions.get(format_type, format_descriptions["timeline"])
+
+    if source_extract:
+        source_block = f"""
+KAYNAK (Wikipedia — "{source_title}"):
+\"\"\"
+{source_extract[:3000]}
+\"\"\"
+
+KRİTİK — DOĞRULUK KURALI:
+- Senaryodaki TÜM tarih, isim, sayı, olay ve iddialar SADECE yukarıdaki kaynaktan gelmeli.
+- Kaynakta olmayan hiçbir spesifik detayı (tarih, rakam, isim) UYDURMA.
+- Kaynakta net olmayan bir nokta varsa, spesifik uydurma detay yerine genel/muğlak bir ifade kullan.
+- Kaynağı YouTube Shorts diline çevir ama içeriğini değiştirme, abartma veya yanlış aktarma.
+"""
+    else:
+        source_block = """
+KRİTİK — DOĞRULUK KURALI:
+- Bu konu için doğrulanmış bir kaynak bulunamadı.
+- SADECE yaygın olarak bilinen, tartışmasız, ansiklopedik düzeyde kesin tarihi olgulara dayan.
+- Emin olmadığın, nadir/tartışmalı/spesifik detayları (kesin tarih, rakam, alıntı) UYDURMA — genel ifade kullan.
+"""
+
     return f"""
 Sen YouTube Shorts için Türkçe tarih videoları üreten bir içerik üreticisisin.
 
 {topic_prompt}
 
 Video formatı: {fmt_desc}
-
+{source_block}
 KRİTİK KURALLAR:
 1. FARKLI ve AZ BİLİNEN bir konu seç — izleyiciyi şaşırtacak, "bunu bilmiyordum" dedirtecek
 2. Başlık merak uyandırmalı, soru formatında veya şaşırtıcı bir iddia içermeli
@@ -96,6 +118,7 @@ KRİTİK KURALLAR:
 4. narration alanı TTS için doğal konuşma dili olmalı — kısa ve etkili cümleler
 5. full_narration TOPLAM 130-160 kelime olmalı (60 saniye video için kritik!)
 6. Türkçe karakterleri doğru kullan: ğ, ü, ş, ı, ö, ç
+7. Her segment için "visual" alanını İNGİLİZCE yaz — stok görsel/video arama sorgusu olarak kullanılacak (ör: "ottoman soldiers marching, dramatic lighting")
 
 Daha önce yüklediklerim (KULLANMA): {yt_list}
 Son kullandığım konular (KULLANMA): {used_list}
@@ -105,13 +128,13 @@ Sadece JSON döndür (başka hiçbir şey yazma):
   "title": "Video başlığı (max 90 karakter, merak uyandıran, emoji ile)",
   "hook": "İlk 3 saniye - izleyiciyi bağlayacak giriş cümlesi",
   "segments": [
-    {{"time": "0-3s",  "text": "Hook cümlesi", "narration": "TTS metni", "visual": "görsel açıklaması"}},
-    {{"time": "3-8s",  "text": "Konu girişi",   "narration": "TTS metni", "visual": "görsel açıklaması"}},
-    {{"time": "8-20s", "text": "Ana içerik",    "narration": "TTS metni", "visual": "görsel açıklaması"}},
-    {{"time": "20-30s","text": "Detay/gelişme", "narration": "TTS metni", "visual": "görsel açıklaması"}},
-    {{"time": "30-45s","text": "Sonuç/etki",    "narration": "TTS metni", "visual": "görsel açıklaması"}},
-    {{"time": "45-55s","text": "İlginç detay",  "narration": "TTS metni", "visual": "görsel açıklaması"}},
-    {{"time": "55-60s","text": "İzleyiciye soru", "narration": "Konuyla ilgili merak uyandıran bir soru sor: Siz ne düşünüyorsunuz? Yorumlarda paylaşın!", "visual": "kamera yakın plan"}}
+    {{"time": "0-3s",  "text": "Hook cümlesi", "narration": "TTS metni", "visual": "English visual search query"}},
+    {{"time": "3-8s",  "text": "Konu girişi",   "narration": "TTS metni", "visual": "English visual search query"}},
+    {{"time": "8-20s", "text": "Ana içerik",    "narration": "TTS metni", "visual": "English visual search query"}},
+    {{"time": "20-30s","text": "Detay/gelişme", "narration": "TTS metni", "visual": "English visual search query"}},
+    {{"time": "30-45s","text": "Sonuç/etki",    "narration": "TTS metni", "visual": "English visual search query"}},
+    {{"time": "45-55s","text": "İlginç detay",  "narration": "TTS metni", "visual": "English visual search query"}},
+    {{"time": "55-60s","text": "İzleyiciye soru", "narration": "Konuyla ilgili merak uyandıran bir soru sor: Siz ne düşünüyorsunuz? Yorumlarda paylaşın!", "visual": "close up camera, dramatic"}}
   ],
   "full_narration": "Tam anlatım metni (TTS için, 130-160 kelime). Son cümle mutlaka izleyiciye yönelik bir soru olmalı — örn: Siz bu konuda ne düşünüyorsunuz? Yorumlarda buluşalım!",
   "description": "YouTube açıklaması (200-300 karakter)",
@@ -211,6 +234,98 @@ def generate_with_gemini(prompt):
         raise Exception(f"Gemini hata: {e}")
 
 
+def wiki_search_topic(query: str, lang: str = "tr") -> dict | None:
+    """
+    Wikipedia'da konuyu arar, en iyi eşleşen maddenin özetini döner.
+    Bulamazsa None döner (konu doğrulanamadı demektir).
+    """
+    import requests
+    try:
+        s = requests.get(
+            f"https://{lang}.wikipedia.org/w/api.php",
+            params={"action": "query", "list": "search", "srsearch": query,
+                    "format": "json", "srlimit": 1},
+            timeout=10, verify=False,
+            headers={"User-Agent": "TarihKanaliBot/1.0"}
+        )
+        hits = s.json().get("query", {}).get("search", [])
+        if not hits:
+            return None
+        title = hits[0]["title"]
+
+        r = requests.get(
+            f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{requests.utils.quote(title)}",
+            timeout=10, verify=False,
+            headers={"User-Agent": "TarihKanaliBot/1.0"}
+        )
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        if data.get("type") == "disambiguation":
+            return None
+        extract = data.get("extract", "")
+        if not extract or len(extract) < 80:
+            return None
+        return {
+            "title":   data.get("title", title),
+            "extract": extract,
+            "url":     data.get("content_urls", {}).get("desktop", {}).get("page", ""),
+        }
+    except Exception as e:
+        print(f"  ⚠ Wikipedia arama hatası ({lang}): {e}")
+        return None
+
+
+def _suggest_topic_name(used_list: str, yt_list: str, attempt: int = 0) -> str | None:
+    """AI'dan tek bir tarih konusu adı ister (script değil, sadece başlık)."""
+    variety_hint = (
+        "" if attempt == 0 else
+        " (Önceki deneme Wikipedia'da doğrulanamadı — FARKLI ve Wikipedia'da kesinlikle "
+        "maddesi olan, daha bilinen bir konu seç.)"
+    )
+    prompt = f"""YouTube Shorts için ilginç, az bilinen ama GERÇEK bir Türkçe tarih konusu öner.{variety_hint}
+Konu Wikipedia'da kesinlikle bir maddesi olan, doğrulanabilir bir olay/kişi/dönem olmalı — uydurma olmasın.
+
+Daha önce kullanılanlar (SEÇME): {used_list}
+Daha önce yüklenenler (SEÇME): {yt_list}
+
+SADECE konu adını tek satırda yaz, başka hiçbir şey yazma. Örnek çıktı: Bizans-Sasani Savaşları"""
+
+    for fn in (generate_with_claude, generate_with_gemini, generate_with_groq):
+        try:
+            text = fn(prompt).strip().strip('"').strip()
+            text = text.split("\n")[0].strip()
+            if 3 < len(text) < 100:
+                return text
+        except Exception as e:
+            print(f"  ⚠ Konu önerisi hatası: {e}")
+    return None
+
+
+def pick_verified_topic(hint: str = None, max_attempts: int = 4) -> dict | None:
+    """
+    Konu belirler ve Wikipedia'da doğrular.
+    hint verilmişse önce onu dener, doğrulanamazsa AI'dan yeni öneriler ister.
+    Döner: {"topic": ..., "wiki": {"title","extract","url"}} veya None (doğrulanamadı).
+    """
+    used = load_used_topics()
+    used_list = ", ".join([t["topic"] for t in used[-50:]]) if used else "yok"
+    yt_list = ", ".join(load_youtube_uploaded_topics()[-30:]) or "yok"
+
+    for attempt in range(max_attempts):
+        candidate = hint if (hint and attempt == 0) else _suggest_topic_name(used_list, yt_list, attempt)
+        if not candidate:
+            continue
+        wiki = wiki_search_topic(candidate, lang="tr")
+        if not wiki:
+            wiki = wiki_search_topic(candidate, lang="en")
+        if wiki:
+            print(f"  ✅ Kaynak doğrulandı: {wiki['title']} ({wiki['url']})")
+            return {"topic": candidate, "wiki": wiki}
+        print(f"  ⚠ Doğrulanamadı ({attempt+1}/{max_attempts}): {candidate}")
+    return None
+
+
 def generate_with_groq(prompt):
     """Groq API ile içerik üretir (son çare)."""
     try:
@@ -241,8 +356,24 @@ def generate_with_groq(prompt):
 
 
 def generate_history_content(topic: str = None, format_type: str = "timeline") -> dict:
-    today  = datetime.now().strftime("%d %B")
-    prompt = build_prompt(topic, format_type, today)
+    today = datetime.now().strftime("%d %B")
+
+    # Konuyu Wikipedia ile doğrula — script yazılmadan ÖNCE
+    print("  → Konu doğrulanıyor (Wikipedia)...")
+    verified = pick_verified_topic(hint=topic)
+    if verified:
+        topic_final    = verified["topic"]
+        source_extract = verified["wiki"]["extract"]
+        source_title   = verified["wiki"]["title"]
+        source_url     = verified["wiki"]["url"]
+    else:
+        print("  ⚠ Kaynak doğrulanamadı, genel bilgi kısıtıyla devam ediliyor")
+        topic_final    = topic
+        source_extract = None
+        source_title   = None
+        source_url     = None
+
+    prompt = build_prompt(topic_final, format_type, today, source_extract, source_title)
 
     # 1. Claude dene
     text = None
@@ -270,6 +401,8 @@ def generate_history_content(topic: str = None, format_type: str = "timeline") -
     content = parse_response(text)
     content["format"]       = format_type
     content["generated_at"] = datetime.now().isoformat()
+    content["verified"]     = bool(source_url)
+    content["source_url"]   = source_url
     # Konuyu kaydet
     save_used_topic(content.get("topic", content.get("title", "bilinmiyor")))
     return content
