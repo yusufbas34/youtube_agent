@@ -178,6 +178,22 @@ def parse_response(text):
 
 
 
+def _explain_ai_failure(e_claude, e_gemini, e_groq) -> str:
+    """3 sağlayıcının da başarısız olma sebebini anlaşılır bir Türkçe mesaja çevirir."""
+    all_text = f"{e_claude} | {e_gemini} | {e_groq}".lower()
+
+    if "you have reached your" in all_text or "spend limit" in all_text or "credit balance" in all_text:
+        return ("Anthropic hesabının kullanım/harcama limiti dolmuş görünüyor. "
+                "console.anthropic.com → Settings → Billing/Limits'ten kontrol et.")
+    if "rate_limit" in all_text or "429" in all_text or "too many requests" in all_text:
+        return "API istek limiti (rate limit) doldu — birkaç dakika sonra tekrar denenmeli."
+    if "gemini_api_key bulunamadı" in all_text and "groq_api_key bulunamadı" in all_text:
+        return ("Claude başarısız oldu ve GEMINI_API_KEY / GROQ_API_KEY tanımlı değil, "
+                "yani gerçek bir yedek sağlayıcı yok. Railway'de bu key'lerden birini "
+                "eklersen Claude limite takıldığında sistem otomatik ona geçer.")
+    return f"Claude, Gemini ve Groq hepsi başarısız: {e_claude} | {e_gemini} | {e_groq}"
+
+
 def generate_with_claude(prompt):
     client = get_client()
     msg = client.messages.create(
@@ -407,7 +423,7 @@ def generate_history_content(topic: str = None, format_type: str = "timeline") -
                 text = generate_with_groq(prompt)
                 print("  ✅ Groq başarılı")
             except Exception as e3:
-                raise Exception(f"Claude, Gemini ve Groq hepsi başarısız: {e} | {e2} | {e3}")
+                raise Exception(_explain_ai_failure(e, e2, e3))
 
     content = parse_response(text)
     content["format"]       = format_type
