@@ -276,53 +276,64 @@ def wiki_search_topic(query: str, lang: str = "tr") -> dict | None:
         return None
 
 
-def _suggest_topic_name(used_list: str, yt_list: str, attempt: int = 0) -> str | None:
-    """AI'dan tek bir tarih konusu adı ister (script değil, sadece başlık)."""
+def _suggest_topic_candidates(used_list: str, yt_list: str, n: int = 5, attempt: int = 0) -> list:
+    """AI'dan TEK çağrıda birden fazla konu adayı ister (API çağrısını azaltmak için)."""
     variety_hint = (
         "" if attempt == 0 else
-        " (Önceki deneme Wikipedia'da doğrulanamadı — FARKLI ve Wikipedia'da kesinlikle "
-        "maddesi olan, daha bilinen bir konu seç.)"
+        " (Önceki adaylar Wikipedia'da doğrulanamadı — FARKLI ve Wikipedia'da kesinlikle "
+        "maddesi olan, daha bilinen konular seç.)"
     )
-    prompt = f"""YouTube Shorts için ilginç, az bilinen ama GERÇEK bir Türkçe tarih konusu öner.{variety_hint}
-Konu Wikipedia'da kesinlikle bir maddesi olan, doğrulanabilir bir olay/kişi/dönem olmalı — uydurma olmasın.
+    prompt = f"""YouTube Shorts için ilginç, az bilinen ama GERÇEK {n} adet Türkçe tarih konusu öner.{variety_hint}
+Her biri Wikipedia'da kesinlikle bir maddesi olan, doğrulanabilir bir olay/kişi/dönem olmalı — uydurma olmasın.
 
 Daha önce kullanılanlar (SEÇME): {used_list}
 Daha önce yüklenenler (SEÇME): {yt_list}
 
-SADECE konu adını tek satırda yaz, başka hiçbir şey yazma. Örnek çıktı: Bizans-Sasani Savaşları"""
+SADECE her satırda bir konu adı olacak şekilde {n} satır yaz, numara/açıklama/başka hiçbir şey ekleme.
+Örnek:
+Bizans-Sasani Savaşları
+İstanbul'un Su Kemerleri"""
 
     for fn in (generate_with_claude, generate_with_gemini, generate_with_groq):
         try:
-            text = fn(prompt).strip().strip('"').strip()
-            text = text.split("\n")[0].strip()
-            if 3 < len(text) < 100:
-                return text
+            text = fn(prompt).strip()
+            lines = [l.strip().strip('"').lstrip("-•*0123456789.) ").strip()
+                     for l in text.split("\n")]
+            candidates = [l for l in lines if 3 < len(l) < 100]
+            if candidates:
+                return candidates[:n]
         except Exception as e:
             print(f"  ⚠ Konu önerisi hatası: {e}")
-    return None
+    return []
 
 
-def pick_verified_topic(hint: str = None, max_attempts: int = 4) -> dict | None:
+def pick_verified_topic(hint: str = None, max_attempts: int = 2) -> dict | None:
     """
     Konu belirler ve Wikipedia'da doğrular.
-    hint verilmişse önce onu dener, doğrulanamazsa AI'dan yeni öneriler ister.
+    hint verilmişse önce onu dener (AI çağrısı yok). Doğrulanamazsa AI'dan TEK
+    çağrıda birden fazla aday ister, hepsini Wikipedia'da (ücretsiz) dener —
+    API çağrı sayısını düşük tutmak için.
     Döner: {"topic": ..., "wiki": {"title","extract","url"}} veya None (doğrulanamadı).
     """
+    if hint:
+        wiki = wiki_search_topic(hint, lang="tr") or wiki_search_topic(hint, lang="en")
+        if wiki:
+            print(f"  ✅ Kaynak doğrulandı: {wiki['title']} ({wiki['url']})")
+            return {"topic": hint, "wiki": wiki}
+        print(f"  ⚠ Verilen konu doğrulanamadı, AI önerisine geçiliyor: {hint}")
+
     used = load_used_topics()
     used_list = ", ".join([t["topic"] for t in used[-50:]]) if used else "yok"
     yt_list = ", ".join(load_youtube_uploaded_topics()[-30:]) or "yok"
 
     for attempt in range(max_attempts):
-        candidate = hint if (hint and attempt == 0) else _suggest_topic_name(used_list, yt_list, attempt)
-        if not candidate:
-            continue
-        wiki = wiki_search_topic(candidate, lang="tr")
-        if not wiki:
-            wiki = wiki_search_topic(candidate, lang="en")
-        if wiki:
-            print(f"  ✅ Kaynak doğrulandı: {wiki['title']} ({wiki['url']})")
-            return {"topic": candidate, "wiki": wiki}
-        print(f"  ⚠ Doğrulanamadı ({attempt+1}/{max_attempts}): {candidate}")
+        candidates = _suggest_topic_candidates(used_list, yt_list, n=5, attempt=attempt)
+        for candidate in candidates:
+            wiki = wiki_search_topic(candidate, lang="tr") or wiki_search_topic(candidate, lang="en")
+            if wiki:
+                print(f"  ✅ Kaynak doğrulandı: {wiki['title']} ({wiki['url']})")
+                return {"topic": candidate, "wiki": wiki}
+        print(f"  ⚠ Bu turda doğrulanan aday yok ({attempt+1}/{max_attempts})")
     return None
 
 
