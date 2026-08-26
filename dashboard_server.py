@@ -677,8 +677,8 @@ SADECE JSON dondur:
 
         # Claude
         try:
-            import httpx, anthropic
-            http_client = httpx.Client(verify=False)
+            import anthropic
+            http_client = anthropic.DefaultHttpxClient(verify=False)
             client = anthropic.Anthropic(api_key=_ant_key, http_client=http_client)
             msg = client.messages.create(model="claude-sonnet-4-5", max_tokens=800,
                 messages=[{"role":"user","content":prompt}])
@@ -693,7 +693,7 @@ SADECE JSON dondur:
         if not suggestions:
             try:
                 import requests as _r
-                for model in ["gemini-2.0-flash","gemini-1.5-flash-latest"]:
+                for model in ["gemini-3.1-flash-lite","gemini-2.5-flash","gemini-3.5-flash"]:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={_gem_key}"
                     r = _r.post(url, json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"maxOutputTokens":800}},timeout=20,verify=False)
                     if r.status_code == 200:
@@ -773,7 +773,7 @@ def api_roadmap_tarih():
         if cached: return jsonify({"ok": True, "roadmap": cached, "cached": True})
 
     try:
-        import httpx, anthropic
+        import anthropic
         from config import ANTHROPIC_API_KEY
 
         tarih_hist = load_json("data/tarih_history.json", [])
@@ -797,7 +797,7 @@ def api_roadmap_tarih():
             "formats":      tarih_anal.get("formats",{}),
         }
 
-        http   = httpx.Client(verify=False)
+        http   = anthropic.DefaultHttpxClient(verify=False)
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, http_client=http)
         prompt = f"""Tarih YouTube kanalı stratejisti. Bu veriler: {json.dumps(summary, ensure_ascii=False)}
 Sadece JSON döndür:

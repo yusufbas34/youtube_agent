@@ -8,10 +8,10 @@ from datetime import datetime
 
 
 def get_client():
-    import httpx
     from config import ANTHROPIC_API_KEY
     import anthropic
-    http = httpx.Client(verify=False)
+    # anthropic SDK v1.0+ http_client artık httpx2 bekliyor
+    http = anthropic.DefaultHttpxClient(verify=False)
     return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, http_client=http)
 
 
@@ -67,7 +67,7 @@ def translate_content_to_english(turkish_content: dict) -> dict:
                 from config import GEMINI_API_KEY; key=GEMINI_API_KEY
             except: pass
         if key:
-            for model in ["gemini-2.0-flash","gemini-1.5-flash-latest"]:
+            for model in ["gemini-3.1-flash-lite","gemini-2.5-flash","gemini-3.5-flash"]:
                 try:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
                     r = requests.post(url, json={"contents":[{"parts":[{"text":prompt}]}],
@@ -94,7 +94,7 @@ def translate_content_to_english(turkish_content: dict) -> dict:
         if key:
             r = requests.post("https://api.groq.com/openai/v1/chat/completions",
                 headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
-                json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":prompt}],
+                json={"model":"openai/gpt-oss-120b","messages":[{"role":"user","content":prompt}],
                       "max_tokens":3000,"temperature":0.3}, timeout=30, verify=False)
             if r.status_code==200:
                 text = r.json()["choices"][0]["message"]["content"].strip()
@@ -231,7 +231,7 @@ def _gemini(prompt):
             from config import GEMINI_API_KEY; key = GEMINI_API_KEY
         except: pass
     if not key: raise ValueError("No GEMINI_API_KEY")
-    for model in ["gemini-2.0-flash", "gemini-1.5-flash-latest"]:
+    for model in ["gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-3.5-flash"]:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
             r = requests.post(url, json={"contents":[{"parts":[{"text":prompt}]}],
@@ -256,7 +256,7 @@ def _groq(prompt):
     if not key: raise ValueError("No GROQ_API_KEY")
     r = requests.post("https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":prompt}],
+        json={"model":"openai/gpt-oss-120b","messages":[{"role":"user","content":prompt}],
               "max_tokens":3000,"temperature":0.9}, timeout=30, verify=False)
     if r.status_code != 200: raise Exception(f"Groq {r.status_code}")
     return r.json()["choices"][0]["message"]["content"].strip()
