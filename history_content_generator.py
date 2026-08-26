@@ -8,10 +8,11 @@ from datetime import datetime
 
 
 def get_client():
-    import httpx
     from config import ANTHROPIC_API_KEY
     import anthropic
-    http = httpx.Client(verify=False)
+    # anthropic SDK v1.0+ http_client artık httpx2 bekliyor — anthropic.DefaultHttpxClient
+    # (SDK'nın kendi re-export'u) bunu doğru şekilde sağlıyor.
+    http = anthropic.DefaultHttpxClient(verify=False)
     return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, http_client=http)
 
 
@@ -219,9 +220,9 @@ def generate_with_gemini(prompt):
         import requests
         # Birkaç model dene
         models = [
-            "gemini-2.0-flash",
-            "gemini-1.5-flash-latest",
-            "gemini-1.5-pro-latest",
+            "gemini-3.1-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-3.5-flash",
         ]
         for model in models:
             try:
@@ -369,7 +370,7 @@ def generate_with_groq(prompt):
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
         body = {
-            "model": "llama-3.3-70b-versatile",
+            "model": "openai/gpt-oss-120b",
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 3000,
             "temperature": 0.9,

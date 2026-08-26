@@ -64,11 +64,11 @@ def _call_ai_for_suggestions(prompt):
     import json as _j, os as _o, requests as _r
     # Claude
     try:
-        import httpx, anthropic
+        import anthropic
         key = _o.environ.get("ANTHROPIC_API_KEY","")
         if not key:
             from config import ANTHROPIC_API_KEY; key = ANTHROPIC_API_KEY
-        http = httpx.Client(verify=False)
+        http = anthropic.DefaultHttpxClient(verify=False)
         client = anthropic.Anthropic(api_key=key, http_client=http)
         msg = client.messages.create(model="claude-sonnet-4-5", max_tokens=800,
             messages=[{"role":"user","content":prompt}])
@@ -83,7 +83,7 @@ def _call_ai_for_suggestions(prompt):
         key = _o.environ.get("GEMINI_API_KEY","")
         if not key:
             from config import GEMINI_API_KEY; key = GEMINI_API_KEY
-        for model in ["gemini-2.0-flash","gemini-1.5-flash-latest"]:
+        for model in ["gemini-3.1-flash-lite","gemini-2.5-flash","gemini-3.5-flash"]:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
             r = _r.post(url, json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"maxOutputTokens":800}},timeout=20,verify=False)
             if r.status_code == 200:
@@ -100,7 +100,7 @@ def _call_ai_for_suggestions(prompt):
             from config import GROQ_API_KEY; key = GROQ_API_KEY
         r = _r.post("https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization":f"Bearer {key}","Content-Type":"application/json"},
-            json={"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":prompt}],"max_tokens":800},timeout=20,verify=False)
+            json={"model":"openai/gpt-oss-120b","messages":[{"role":"user","content":prompt}],"max_tokens":800},timeout=20,verify=False)
         if r.status_code == 200:
             text = r.json()["choices"][0]["message"]["content"].strip()
             if "```json" in text: text = text.split("```json")[1].split("```")[0]
