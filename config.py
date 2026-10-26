@@ -18,8 +18,6 @@ YOUTUBE_API_KEY     = os.environ.get("YOUTUBE_API_KEY", "")
 ELEVENLABS_API_KEY  = os.environ.get("ELEVENLABS_API_KEY", "")
 TELEGRAM_BOT_TOKEN  = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID    = os.environ.get("TELEGRAM_CHAT_ID", "")
-PIXABAY_API_KEY     = os.environ.get("PIXABAY_API_KEY", "55256954-4e774f9bedfa0d1f2fe7efe0a")
-PEXELS_API_KEY      = os.environ.get("PEXELS_API_KEY", "")
 
 # ─── Video Servisleri ─────────────────────────────────────────────
 VIDEO_PROVIDER = "runway"

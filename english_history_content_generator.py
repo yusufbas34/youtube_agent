@@ -178,12 +178,7 @@ Return ONLY JSON:
   "period": "time period (e.g. Ancient Rome, Ottoman Empire, Modern)",
   "format": "{format_type}",
   "background_color": "#1a0a05",
-  "accent_color": "#d97706",
-  "pexels_queries": [
-    "dramatic historical visual query 1",
-    "period-specific atmospheric query 2",
-    "cinematic backup query 3"
-  ]
+  "accent_color": "#d97706"
 }}"""
 
     # Claude → Gemini → Groq fallback
