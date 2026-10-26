@@ -119,7 +119,7 @@ KRİTİK KURALLAR:
 4. narration alanı TTS için doğal konuşma dili olmalı — kısa ve etkili cümleler
 5. full_narration TOPLAM 130-160 kelime olmalı (60 saniye video için kritik!)
 6. Türkçe karakterleri doğru kullan: ğ, ü, ş, ı, ö, ç
-7. Her segment için "visual" alanını İNGİLİZCE yaz — stok görsel/video arama sorgusu olarak kullanılacak (ör: "ottoman soldiers marching, dramatic lighting")
+7. Her segment için "visual" alanını İNGİLİZCE yaz — sahne illüstrasyonu için kullanılacak (ör: "ottoman soldiers marching, dramatic lighting")
 
 Daha önce yüklediklerim (KULLANMA): {yt_list}
 Son kullandığım konular (KULLANMA): {used_list}
@@ -145,12 +145,7 @@ Sadece JSON döndür (başka hiçbir şey yazma):
   "period": "dönem (örn: Osmanlı, Roma, Modern)",
   "format": "{format_type}",
   "background_color": "#1a0a05",
-  "accent_color": "#d97706",
-  "pexels_queries": [
-    "exact visual query 1 matching the story in english",
-    "exact visual query 2 matching the period in english",
-    "dramatic atmospheric backup query in english"
-  ]
+  "accent_color": "#d97706"
 }}"""
 
 
